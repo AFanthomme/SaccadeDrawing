@@ -49,12 +49,13 @@ def localpixel2localpos(local_pixel):
 
 class Artist:
     def __init__(self, barycenter=(64, 64), symbol_type='line_0'):
-        self.barycenter = barycenter # in pixels, in the global frame
+        self.barycenter = np.array([barycenter[0],barycenter[1]]) # in pixels, in the global frame
+
         self.symbol_type = symbol_type
         self.start_in_bc_frame = symbols_starts_in_bc_frame[self.symbol_type]
         self.end_in_bc_frame = symbols_ends_in_bc_frame[self.symbol_type]
-        self.start = self.start_in_bc_frame + self.barycenter[0] - 16 # Barycenter is at position 16, 16
-        self.end = self.end_in_bc_frame + self.barycenter[1] - 16 # Barycenter is at position 16, 16
+        self.start = self.start_in_bc_frame + self.barycenter - 16 # Barycenter is at position 16, 16
+        self.end = self.end_in_bc_frame + self.barycenter - 16 # Barycenter is at position 16, 16
 
     def draw(self, board):
         x, y = self.barycenter
@@ -120,16 +121,24 @@ class Boards:
         logging.critical(f'Called world.set_seed with seed {self.seed}')
         self.np_random = np.random.RandomState(seed=self.seed)
 
-    def __leq_barycenters(self, b1, b2):
-        col1 = b1[0] // 16
-        col2 = b2[0] // 16
-        row1 = b1[1] // 16
-        row2 = b2[1] // 16
+    # def __leq_barycenters(self, b1, b2):
+    #     col1 = b1[0] // 16
+    #     col2 = b2[0] // 16
+    #     row1 = b1[1] // 16
+    #     row2 = b2[1] // 16
 
-        if col1 != col2:
-            # return b1[0] >= b2[0]
+    #     if col1 != col2:
+    #         # return b1[0] >= b2[0]
+    #         return b1[0] - b2[0]
+    #     elif row1 != row2: 
+    #         return b1[1] - b2[1]
+    #     else:
+    #         raise ValueError(f'Both barycenters {b1} and {b2} are in the same spawn zones !!')
+    
+    def __leq_barycenters(self, b1, b2):
+        if b1[0] != b2[0]:
             return b1[0] - b2[0]
-        elif row1 != row2: 
+        elif b1[1] != b2[1]: 
             return b1[1] - b2[1]
         else:
             raise ValueError(f'Both barycenters {b1} and {b2} are in the same spawn zones !!')
@@ -170,8 +179,6 @@ class Boards:
         # This will automatically filter the non existent symbols
         for i, barycenter, symbol_int in zip(range(n_symbols), barycenters, symbols_int):
             artists[i] = Artist(barycenter, symbol_types[symbol_int]) 
-
-        # print('in generate one board', artists)
 
         # Finally, put the patches on a board
         board = np.zeros((128, 128, 3), dtype=np.uint8)     
