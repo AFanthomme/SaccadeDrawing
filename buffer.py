@@ -16,7 +16,7 @@ class Buffer:
         self.buffer_barycenters = np.zeros((buffer_size, 18, 2), dtype=np.float32)
         self.buffer_positions = np.zeros((buffer_size, 2), dtype=np.float32)
         self.buffer_new_positions = np.zeros((buffer_size, 2), dtype=np.float32)
-        self.buffer_symbols_done = np.zeros((buffer_size, 5), dtype=np.int)
+        self.buffer_symbols_done = np.zeros((buffer_size, 18), dtype=int)
         self.buffer_n_symbols = np.zeros((buffer_size), dtype=int)
         # These two are all that matters: the total action, and the part of it that was a visual saccade
         self.buffer_oracle_actions = np.zeros((buffer_size, 3), dtype=np.float32)
@@ -69,9 +69,10 @@ class Buffer:
 
             self.pos = (self.pos+1) % self.buffer_size
 
-    def sample(self, batch_size):
+    def sample(self, batch_size, batch_inds=None):
         # Sample takes care of converting to pytch  tensors
-        batch_inds = np.random.randint(0, self.current_size, size=batch_size)
+        if batch_inds is None:
+            batch_inds = np.random.randint(0, self.current_size, size=batch_size)
         return_dict = {}
         return_dict['obs'] = tch .tensor(self.buffer_obs[batch_inds], dtype=tch .float32).to(self.device).clone()
         return_dict['actions'] = tch .tensor(self.buffer_actions[batch_inds], dtype=tch .float32).to(self.device).clone()
@@ -92,56 +93,60 @@ class Buffer:
         np.savez(path, obs=self.buffer_obs, actions=self.buffer_actions, rewards=self.buffer_rewards, next_obs=self.buffer_next_obs, 
                  endpoints=self.buffer_endpoints, positions=self.buffer_positions, symbols_done=self.buffer_symbols_done, new_positions=self.buffer_new_positions, 
                  oracle_actions=self.buffer_oracle_actions, n_symbols=self.buffer_n_symbols, m=self.m, s=self.s, barycenters=self.buffer_barycenters, 
-                 oracle_saccades=self.buffer_oracle_saccades, fovea_after_saccade=self.buffer_fovea_after_saccade)
+                 oracle_saccades=self.buffer_oracle_saccades, fovea_after_saccade=self.buffer_fovea_after_saccade, current_size=self.current_size)
 
     def load(self, path):
-        self.buffer_obs = np.load(path)['obs']
-        self.buffer_actions = np.load(path)['actions']
-        self.buffer_rewards = np.load(path)['rewards']
-        self.buffer_next_obs = np.load(path)['next_obs']
-        self.buffer_endpoints = np.load(path)['endpoints']
-        self.buffer_positions = np.load(path)['positions']
-        self.buffer_barycenters = np.load(path)['barycenters']
-        self.buffer_symbols_done = np.load(path)['symbols_done']
-        self.buffer_new_positions = np.load(path)['new_positions']
-        self.buffer_oracle_actions = np.load(path)['oracle_actions']
-        self.buffer_oracle_saccades = np.load(path)['oracle_saccades']
-        self.buffer_fovea_after_saccade = np.load(path)['fovea_after_saccade']
-        self.buffer_n_symbols = np.load(path)['n_symbols']
-        self.m = np.load(path)['m']
-        self.s = np.load(path)['s']
+        state_dict = np.load(path)
+        self.buffer_obs = state_dict['obs']
+        self.buffer_actions = state_dict['actions']
+        self.buffer_rewards = state_dict['rewards']
+        self.buffer_next_obs = state_dict['next_obs']
+        self.buffer_endpoints = state_dict['endpoints']
+        self.buffer_positions = state_dict['positions']
+        self.buffer_barycenters = state_dict['barycenters']
+        self.buffer_symbols_done = state_dict['symbols_done']
+        self.buffer_new_positions = state_dict['new_positions']
+        self.buffer_oracle_actions = state_dict['oracle_actions']
+        self.buffer_oracle_saccades = state_dict['oracle_saccades']
+        self.buffer_fovea_after_saccade = state_dict['fovea_after_saccade']
+        self.buffer_n_symbols = state_dict['n_symbols']
+        self.current_size = state_dict['current_size']
+        self.m = state_dict['m']
+        self.s = state_dict['s']
         self.is_full = True # To avoid recomputing the means if we do only partial loading
 
 
 if __name__ == '__main__':
     import inspect
-    from env import Boards, Oracle
+    from env import Boards
+    from oracle import Oracle
     from copy import deepcopy
 
 
     seed = 777
     savepath = 'out/buffer_tests/'
+    os.makedirs(savepath + 'before_buffer', exist_ok=True)
 
     board_params = {
         'n_envs': 10,
         'n_symbols_min': 4,
         'n_symbols_max': 8,
         'reward_type': 'default',
-        'reward_params': {},
+        'reward_params': {'overlap_criterion': .4},
         'all_envs_start_identical': False,
     }
 
     # Important: seeding
     np.random.seed(seed)
-    tch .manual_seed(seed)
-    tch .backends.cudnn.deterministic = True
+    tch.manual_seed(seed)
+    tch.backends.cudnn.deterministic = True
 
     envs = Boards(board_params=board_params, seed=seed)
     oracle = Oracle(sensitivity=.1, noise=.02, seed=777)
     buffer = Buffer(10)
 
     obs = envs.reset().transpose(0, 3, 1, 2)
-    for t in range(10):
+    for t in range(16):
         transition_dict = {}
 
         # Info about the inital observation
@@ -158,26 +163,27 @@ if __name__ == '__main__':
         transition_dict['oracle_saccades'] = oracle_submoves['saccades'].copy()
 
         # Just add some noise to make actions and oracle actions different in buffer
-        actions = oracle_actions.copy() + np.random.normal(0, 0.02, size=actions.shape)
+        actions = oracle_actions.copy() + np.random.normal(0, 0.02, size=oracle_actions.shape)
 
 
         # Just in case, and also to make it explicit we call get_center_patch with float position
         pos_after_saccade = (envs.positions + oracle_submoves['saccades']).copy()
         pos_after_saccade = np.clip(pos_after_saccade, -1, 1)
-        fovea_image = np.array([envs.get_centered_patch(env_idx, center_pos=pos_after_saccade[env_idx]) for env_idx in range(envs.n_envs)])
-        transition_dict['fovea_after_saccade'] = fovea_image.copy()
 
+        fovea_image = np.array([envs.get_centered_patch(env_idx, center_pos=pos_after_saccade[env_idx]).transpose(2, 0, 1) for env_idx in range(envs.n_envs)])
+        transition_dict['fovea_after_saccade'] = fovea_image.copy()
 
         next_obs, rewards, dones, _, info = envs.step(actions)
         next_obs = next_obs.transpose(0, 3, 1, 2)
-        
+
         # Assign obs for next loop iteration
         obs = next_obs.copy() 
+        next_obs = next_obs.copy()
 
         # Modify next_obs if the episode is done to put the correct terminal observation
         for i in range(len(obs)):
             if dones[i]:
-                next_obs[i] = info[i]['terminal_observation']
+                next_obs[i] = info[i]['terminal_observation'].transpose(2, 0, 1)
 
         transition_dict['actions'] = actions.copy()
         transition_dict['rewards'] = rewards.copy()
@@ -185,109 +191,127 @@ if __name__ == '__main__':
         transition_dict['new_positions'] = envs.positions.copy()
 
         # Could become kinda big, so we delete it
-        del next_obs
+        del next_obs, fovea_image, pos_after_saccade, oracle_actions, oracle_submoves, actions, rewards, dones, info
 
         buffer.add(transition_dict)
 
         if buffer.is_full:
+            # Just to check it's full after one step !
             print(f'Buffer is full at step {t}')
-            batch = buffer.sample(10) 
+            # We specify batch_inds to make sure we get the obs as they were put in
+            batch = buffer.sample(10, batch_inds=np.arange(10)) 
             os.makedirs(savepath, exist_ok=True)
 
             for i in range(10):
                 obs1 = transition_dict['obs'][i]
                 obs2 = transition_dict['next_obs'][i]
                 endpoints = transition_dict['endpoints'][i]
-                positions = transition_dict['positions'][i]
-                new_positions = transition_dict['new_positions'][i]
+                position = transition_dict['positions'][i]
+                new_position = transition_dict['new_positions'][i]
                 n_symbols = transition_dict['n_symbols'][i]
-                actions = transition_dict['actions'][i]
+                action = transition_dict['actions'][i]
                 reward = transition_dict['rewards'][i]
                 oracle_action = transition_dict['oracle_actions'][i]
                 barycenters = transition_dict['barycenters'][i]
-                oracle_saccades = transition_dict['oracle_saccades'][i]
+                oracle_saccade = transition_dict['oracle_saccades'][i]
+                symbols_done = transition_dict['symbols_done'][i]
+                fovea_image = transition_dict['fovea_after_saccade'][i]
 
-                fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+                fig, axes = plt.subplots(1, 3, figsize=(30, 10))
 
                 # Initial image
-                axes[0].imshow(obs1.transpose(1, 2, 0), extent=[-1,1,-1,1], origin='lower')
-                axes[0].plot([positions[i, 0], positions[i, 0] + actions[i, 0]], [positions[i, 1], positions[i, 1] + actions[i, 1]], color='gray', label='Total action')
-                axes[2].scatter(barycenter[0], barycenter[1], s=100, marker='+', color='gray', label=f"Barycenter: ({barycenter[0]:.2f}|{barycenter[1]:.2f})")
-                axes[0].plot([positions[i, 0], positions[i, 0] + oracle_saccades[i, 0]], [positions[i, 1], positions[i, 1] + oracle_saccades[i, 1]], color='gray', label='Total action')
+                axes[0].imshow(obs1.transpose(2, 1, 0), extent=[-1,1,-1,1], origin='lower')
+                axes[0].plot([position[0], position[0] + action[0]], [position[1], position[1] + action[1]], color='gray', label='Total action')
+                axes[0].scatter(position[0] + oracle_saccade[0], position[1] + oracle_saccade[1], color='r', marker='.', label='Eye pos after saccade')
                 axes[0].legend()
-                axes[0].axvline(x=0., color='magenta', ls='--', lw=4)
-                axes[0].axhline(y=0., color='magenta', ls='--', lw=4)
-                axes[0].set_title(f"Initial obs, pos=({positions[0]:.2f}|{positions[1]:.2f})")
+                axes[0].axvline(x=0., color='magenta', ls='--', lw=1)
+                axes[0].axhline(y=0., color='magenta', ls='--', lw=1)
+                axes[0].set_title(f"Initial obs, pos=({position[0]:.2f}|{position[1]:.2f})")
 
+                axes[1].imshow(fovea_image.transpose(2, 1, 0), origin='lower', extent=[-1/4, 1/4, -1/4, 1/4])
+                axes[1].scatter(0, 0, color='r', marker='.', s=36, label='Eye pos')
+                axes[1].scatter(action[0] - oracle_saccade[0], action[1] - oracle_saccade[1], color='gray', marker='+', label='Hand pos')
+                axes[1].legend()
+                axes[1].set_title('Fovea image')
 
-                axes[1].imshow(obs2.transpose(1, 2, 0), extent=[-1,1,-1,1], origin='lower')
-                axes[1].axvline(x=0., color='magenta', ls='--', lw=4)
-                axes[1].axhline(y=0., color='magenta', ls='--', lw=4)
-                axes[1].set_title(f"Final obs, pos=({new_positions[0]:.2f}|{new_positions[1]:.2f})")
-
-
-                for barycenter, end in zip(barycenters, endpoints):
+                axes[2].imshow(obs2.transpose(2, 1, 0), extent=[-1,1,-1,1], origin='lower')
+                axes[2].axvline(x=0., color='magenta', ls='--', lw=1)
+                axes[2].axhline(y=0., color='magenta', ls='--', lw=1)
+                for barycenter, end, _ in zip(barycenters, endpoints, range(n_symbols)):
                     axes[2].plot([end[0], end[2]], [end[1], end[3]], lw=4, label=f"({end[0]:.2f}|{end[1]:.2f}) -> ({end[2]:.2f}|{end[3]:.2f})")
-                axes[2].axvline(x=0., color='magenta', ls='--', lw=4)
-                axes[2].axhline(y=0., color='magenta', ls='--', lw=4)
+                    axes[2].scatter(barycenter[0], barycenter[1], s=100, marker='+', color='gray', label=f"Barycenter: ({barycenter[0]:.2f}|{barycenter[1]:.2f})")
+
+                axes[2].set_title(f"Final obs, pos=({new_position[0]:.2f}|{new_position[1]:.2f})")
+                axes[2].axvline(x=0., color='magenta', ls='--', lw=1)
+                axes[2].axhline(y=0., color='magenta', ls='--', lw=1)
                 axes[2].set_xlim(-1, 1)
                 axes[2].set_ylim(-1, 1)
-                axes[2].legend()
+                box = axes[2].get_position()
+                axes[2].set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
+                # Put a legend to the right of the current axis
+                axes[2].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+                fig.suptitle(f"Action: ({action[0]:.2f}|{action[1]:.2f}|{action[2]:.2f}), reward: {reward}, n_symbols: {n_symbols}, dones = {[int(d) for d in symbols_done[:n_symbols]]} \n")
+                fig.savefig(savepath + 'before_buffer/' + f"{i}_{t}.png")
+                plt.close(fig)
 
 
+            os.makedirs(savepath + 'after_buffer/', exist_ok=True)
+            for i in range(10):
+                obs1 = batch['obs'][i].cpu().numpy()
+                obs2 = batch['next_obs'][i].cpu().numpy()
+                endpoints = batch['endpoints'][i].cpu().numpy()
+                position = batch['positions'][i].cpu().numpy()
+                new_position = batch['new_positions'][i].cpu().numpy()
+                n_symbols = batch['n_symbols'][i].cpu().numpy()
+                action = batch['actions'][i].cpu().numpy()
+                reward = batch['rewards'][i].cpu().numpy()
+                oracle_action = batch['oracle_actions'][i].cpu().numpy()
+                barycenters = batch['barycenters'][i].cpu().numpy()
+                oracle_saccade = batch['oracle_saccades'][i].cpu().numpy()
+                symbols_done = batch['symbols_done'][i].cpu().numpy()
+                fovea_image = batch['fovea_after_saccade'][i].cpu().numpy()
 
-            # axes[0].imshow(obs[env_idx].transpose(1, 0, 2), origin='lower', extent=[-1, 1, -1, 1])
-            # axes[0].plot([envs.positions[env_idx, 0], envs.positions[env_idx, 0] + action[env_idx, 0]], [envs.positions[env_idx, 1], envs.positions[env_idx, 1] + action[env_idx, 1]], color='gray', label='Total action')
-            # axes[0].scatter([envs.positions[env_idx, 0] + saccades[env_idx, 0]], [envs.positions[env_idx, 1] +saccades[env_idx, 1]], color='m', marker='+', label='Initial saccade')
-            # axes[0].legend()
-            # axes[0].set_title('Global image')
+                fig, axes = plt.subplots(1, 3, figsize=(30, 10))
 
-            # # Plot the fovea image and homing submove 
-            # # print(fovea_image[env_idx].shape)
-            # axes[1].imshow(fovea_image[env_idx].transpose(1, 0, 2), origin='lower', extent=[-1/4, 1/4, -1/4, 1/4])
-            # axes[1].scatter([homing_start[env_idx, 0]], [homing_start[env_idx, 1]], color='m', marker='+', label='Identified start')
-            # axes[1].scatter([homing_end[env_idx, 0]], [homing_end[env_idx, 1]], color='c', marker='+', label='Identified end')
-            # axes[1].scatter(0, 0, color='r', marker='.', s=36, label='Eye pos after saccade')
-            # axes[1].plot([homing_start[env_idx, 0], homing_end[env_idx, 0]], [homing_start[env_idx, 1], homing_end[env_idx, 1]], color='gray', marker='+')
-            # axes[1].legend()
-            # axes[1].set_title('Fovea image')
+                # Initial image
+                axes[0].imshow(obs1.transpose(2, 1, 0), extent=[-1,1,-1,1], origin='lower')
+                axes[0].plot([position[0], position[0] + action[0]], [position[1], position[1] + action[1]], color='gray', label='Total action')
+                axes[0].scatter(position[0] + oracle_saccade[0], position[1] + oracle_saccade[1], color='r', marker='.', label='Eye pos after saccade')
+                axes[0].legend()
+                axes[0].axvline(x=0., color='magenta', ls='--', lw=1)
+                axes[0].axhline(y=0., color='magenta', ls='--', lw=1)
+                axes[0].set_title(f"Initial obs, pos=({position[0]:.2f}|{position[1]:.2f})")
 
-                fig.suptitle(f"Action: ({action[0]:.2f}|{action[1]:.2f}|{action[2]:.2f}), reward: {reward},  oracle action: ({oracle_action[0]:.2f}|{oracle_action[1]:.2f}|{oracle_action[2]:.2f}), n_symbols: {n_symbols} \n")
-                plt.savefig(savepath + f"buffer_sanity_check/{i}_before.png")
+                axes[1].imshow(fovea_image.transpose(2, 1, 0), origin='lower', extent=[-1/4, 1/4, -1/4, 1/4])
+                axes[1].scatter(0, 0, color='r', marker='.', s=36, label='Eye pos')
+                axes[1].scatter(action[0] - oracle_saccade[0], action[1] - oracle_saccade[1], color='gray', marker='+', label='Hand pos')
+                axes[1].legend()
+                axes[1].set_title('Fovea image')
 
-            # for i in range(10):
-            #     obs1 = batch['obs'][i].cpu().numpy()
-            #     obs2 = batch['next_obs'][i].cpu().numpy()
-            #     endpoints = batch['endpoints'][i]
-            #     position = batch['positions'][i]
-            #     new_position = batch['new_positions'][i]
-            #     n_symbols = batch['n_symbols'][i]
-            #     action = batch['actions'][i]
-            #     reward = batch['rewards'][i]
-            #     oracle_action = batch['oracle_actions'][i]
+                axes[2].imshow(obs2.transpose(2, 1, 0), extent=[-1,1,-1,1], origin='lower')
+                axes[2].axvline(x=0., color='magenta', ls='--', lw=1)
+                axes[2].axhline(y=0., color='magenta', ls='--', lw=1)
+                for barycenter, end, _ in zip(barycenters, endpoints, range(n_symbols)):
+                    axes[2].plot([end[0], end[2]], [end[1], end[3]], lw=4, label=f"({end[0]:.2f}|{end[1]:.2f}) -> ({end[2]:.2f}|{end[3]:.2f})")
+                    axes[2].scatter(barycenter[0], barycenter[1], s=100, marker='+', color='gray', label=f"Barycenter: ({barycenter[0]:.2f}|{barycenter[1]:.2f})")
 
-            #     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-            #     axes[0].imshow(obs1.transpose(1, 2, 0), extent=[-1,1,-1,1], origin='lower')
-            #     axes[0].axvline(x=0., color='magenta', ls='--', lw=4)
-            #     axes[0].axhline(y=0., color='magenta', ls='--', lw=4)
-            #     axes[0].set_title(f"Initial obs, pos=({position[0]:.2f}|{position[1]:.2f})")
-            #     axes[1].imshow(obs2.transpose(1, 2, 0), extent=[-1,1,-1,1], origin='lower')
-            #     axes[1].axvline(x=0., color='magenta', ls='--', lw=4)
-            #     axes[1].axhline(y=0., color='magenta', ls='--', lw=4)
-            #     axes[1].set_title(f"Final obs, pos=({new_position[0]:.2f}|{new_position[1]:.2f})")
+                axes[2].set_title(f"Final obs, pos=({new_position[0]:.2f}|{new_position[1]:.2f})")
+                axes[2].axvline(x=0., color='magenta', ls='--', lw=1)
+                axes[2].axhline(y=0., color='magenta', ls='--', lw=1)
+                axes[2].set_xlim(-1, 1)
+                axes[2].set_ylim(-1, 1)
+                box = axes[2].get_position()
+                axes[2].set_position([box.x0, box.y0, box.width * 0.8, box.height])
 
+                # Put a legend to the right of the current axis
+                axes[2].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
-            #     for end in endpoints:
-            #         end = end.cpu().numpy()
-            #         axes[2].plot([end[0], end[2]], [end[1], end[3]], lw=4, label=f"({end[0]:.2f}|{end[1]:.2f}) -> ({end[2]:.2f}|{end[3]:.2f})")
-            #     axes[2].axvline(x=0., color='magenta', ls='--', lw=4)
-            #     axes[2].axhline(y=0., color='magenta', ls='--', lw=4)
-            #     axes[2].set_xlim(-1, 1)
-            #     axes[2].set_ylim(-1, 1)
-            #     axes[2].legend()
+                fig.suptitle(f"Action: ({action[0]:.2f}|{action[1]:.2f}|{action[2]:.2f}), reward: {reward}, n_symbols: {n_symbols}, dones = {[int(d) for d in symbols_done[:n_symbols]]} \n")
+                fig.savefig(savepath + 'after_buffer/' + f"{i}_{t}.png")
+                plt.close(fig)
 
-            #     fig.suptitle(f"Action: ({action[0]:.2f}|{action[1]:.2f}), reward: {reward.item()},  oracle action: ({oracle_action[0]:.2f}|{oracle_action[1]:.2f}), n_symbols: {n_symbols+1} \n")
-            #     plt.savefig(root_output_folder + f"/buffer_sanity_check/after_buffer_{i}.png")
 
             # Save and load the buffer to make sure it works
 
@@ -303,4 +327,9 @@ if __name__ == '__main__':
             attributes = [a for a in attributes if not(a[0].startswith('__') and a[0].endswith('__'))]
 
             for key, item in attributes:
-                assert bkp_buffer.__dict__[key] == item, f'Buffer attribute {key} has changed when saving and loading'
+                try:
+                    # For arrays
+                    assert (bkp_buffer.__dict__[key] == item).all(), f'Buffer attribute {key} has changed when saving and loading'
+                except AttributeError:
+                    # For the rest
+                    assert bkp_buffer.__dict__[key] == item, f'Buffer attribute {key} has changed when saving and loading'

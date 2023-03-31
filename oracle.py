@@ -107,11 +107,9 @@ if __name__ == '__main__':
         action, submoves = oracle.get_action_and_submoves(envs)
         saccades = submoves['saccades']
         pos_after_saccade = (envs.positions + saccades).copy()
-        # print(pos_after_saccade)
 
         # Just in case, and also to make it explicit we call get_center_patch with float position
         pos_after_saccade = np.clip(pos_after_saccade, -1, 1)
-        # print(pos_after_saccade)
         fovea_image = [envs.get_centered_patch(env_idx, center_pos=pos_after_saccade[env_idx]) for env_idx in range(envs.n_envs)]
         homing_start = submoves['homes_to_start']
         homing_end = submoves['homes_to_end']

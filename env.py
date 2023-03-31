@@ -188,16 +188,11 @@ class Boards:
     def _reset_one_env(self, env_id):
         board, artists, n_symbols, symbols_done = self._generate_one_board()
         self.boards[env_id] = board
-        # self.barycenters[env_id] = np.array([artist.barycenter if artist is not None else [0., 0.] for artist in artists])
         tmp = np.array([artist.barycenter if artist is not None else [0., 0.] for artist in artists])
-        # print(np.unique(tmp))
         tmp = tmp / 64. - 1.
-        # print(tmp.min(), tmp.max())
         self.barycenters[env_id] = np.array([artist.barycenter / 64. - 1. if artist is not None else [0., 0.] for artist in artists])
-        # print(self.barycenters[env_id].min(), self.barycenters[env_id].max())
 
         self.target_symbols[env_id] = np.array([artist.draw(np.zeros((self.n_pixels, self.n_pixels, 3))) if artist is not None else np.zeros((self.n_pixels, self.n_pixels, 3)) for artist in artists])
-        # self.target_endpoints[env_id] = np.array([np.hstack([artist.start, artist.end]) if artist is not None else np.zeros(4) for artist in artists])
         self.target_endpoints[env_id] = np.array([np.hstack([artist.start / 64. - 1., artist.end / 64. - 1.]) if artist is not None else np.zeros(4) for artist in artists])
         self.artists[env_id] = artists
         self.symbols_done[env_id] = symbols_done
@@ -228,17 +223,6 @@ class Boards:
         for i in range(self.n_envs):
             if i == 0 or not self.all_envs_start_identical: 
                 self._reset_one_env(i)
-                # board, artists, n_symbols, symbols_done = self._generate_one_board()
-                # self.boards[i] = board
-                # self.artists[i] = artists
-                # # self.barycenters[i] = np.array([artist.barycenter if artist is not None else (0., 0.) for artist in artists])
-                # self.barycenters[i] = np.array([artist.barycenter / 64. - 1. if artist is not None else (0., 0.) for artist in artists])
-                # self.target_symbols[i] = np.array([artist.draw(np.zeros((self.n_pixels, self.n_pixels, 3))) if artist is not None else np.zeros((self.n_pixels, self.n_pixels, 3)) for artist in artists])
-                # # self.target_endpoints[i] = np.array([np.hstack([artist.start, artist.end]) if artist is not None else np.zeros(4) for artist in artists])
-                # self.target_endpoints[i] = np.array([np.hstack([artist.start / 64. - 1., artist.end / 64. - 1.]) if artist is not None else np.zeros(4) for artist in artists])
-                # self.symbols_done[i] = symbols_done
-                # self.n_symbols[i] = n_symbols
-                # self.timeouts[i] = 2*n_symbols 
             else:
                 self.boards[i] = self.boards[0]
                 self.artists[i] = self.artists[0]
@@ -388,7 +372,7 @@ if __name__ == '__main__':
         'n_symbols_min': 4,
         'n_symbols_max': 8,
         'reward_type': 'default',
-        'reward_params': {},
+        'reward_params':  {'overlap_criterion': .4},
         'all_envs_start_identical': False,
     }
 
@@ -406,13 +390,23 @@ if __name__ == '__main__':
     boards = Boards(board_params)
     initial_img = boards.reset()
     for env_id in range(10):
-        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+        fig, axes = plt.subplots(1, 4, figsize=(20, 5))
         axes[0].imshow(initial_img[env_id].transpose(1,0,2), origin='lower')
         axes[0].set_title('Full observation')
         axes[1].imshow(boards.artists[env_id][0].draw(np.zeros_like(initial_img[env_id])).transpose(1,0,2), origin='lower')
         axes[1].set_title('left-bot most artist (alone)')
         axes[2].imshow(boards.get_centered_patch(env_id, boards.artists[env_id][0].barycenter).transpose(1,0,2), origin='lower')
         axes[2].set_title('Punched-in view around barycenter of left-most artist')
+
+        axes[3].imshow(initial_img[env_id].transpose(1,0,2), origin='lower', extent=[-1,1,-1,1])
+        for barycenter, end, _ in zip(boards.barycenters[env_id], boards.target_endpoints[env_id], range(boards.n_symbols[env_id])):
+            axes[3].plot([end[0], end[2]], [end[1], end[3]], lw=4, label=f"({end[0]:.2f}|{end[1]:.2f}) -> ({end[2]:.2f}|{end[3]:.2f})")
+            axes[3].scatter(barycenter[0], barycenter[1], s=100, marker='+', color='gray', label=f"Barycenter: ({barycenter[0]:.2f}|{barycenter[1]:.2f})")
+        box = axes[3].get_position()
+        axes[3].set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
+        # Put a legend to the right of the current axis
+        axes[3].legend(loc='center left', bbox_to_anchor=(1, 0.5))
         fig.savefig(test_dir + f'reset_imgs_{env_id}.png')
         plt.close(fig)
 
