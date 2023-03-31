@@ -97,11 +97,8 @@ if __name__ == '__main__':
     # Test the oracle in an open loop setting
     t_tot = 40
 
-
     obs = envs.reset()
     done = np.zeros(envs.n_envs)
-
-    
 
     for step in range(0, t_tot):
         action, submoves = oracle.get_action_and_submoves(envs)
