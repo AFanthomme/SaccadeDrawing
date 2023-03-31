@@ -8,7 +8,6 @@ from matplotlib import patches
 import matplotlib.pyplot as plt
 import os
 import cv2
-# from torch.nn.functional import AvgPool2d
 
 from typing import List, Tuple, Dict, Union, Optional, Any  
 
@@ -189,9 +188,17 @@ class Boards:
     def _reset_one_env(self, env_id):
         board, artists, n_symbols, symbols_done = self._generate_one_board()
         self.boards[env_id] = board
-        self.barycenters[env_id] = np.array([artist.barycenter if artist is not None else [0., 0.] for artist in artists])
+        # self.barycenters[env_id] = np.array([artist.barycenter if artist is not None else [0., 0.] for artist in artists])
+        tmp = np.array([artist.barycenter if artist is not None else [0., 0.] for artist in artists])
+        # print(np.unique(tmp))
+        tmp = tmp / 64. - 1.
+        # print(tmp.min(), tmp.max())
+        self.barycenters[env_id] = np.array([artist.barycenter / 64. - 1. if artist is not None else [0., 0.] for artist in artists])
+        # print(self.barycenters[env_id].min(), self.barycenters[env_id].max())
+
         self.target_symbols[env_id] = np.array([artist.draw(np.zeros((self.n_pixels, self.n_pixels, 3))) if artist is not None else np.zeros((self.n_pixels, self.n_pixels, 3)) for artist in artists])
-        self.target_endpoints[env_id] = np.array([np.hstack([artist.start, artist.end]) if artist is not None else np.zeros(4) for artist in artists])
+        # self.target_endpoints[env_id] = np.array([np.hstack([artist.start, artist.end]) if artist is not None else np.zeros(4) for artist in artists])
+        self.target_endpoints[env_id] = np.array([np.hstack([artist.start / 64. - 1., artist.end / 64. - 1.]) if artist is not None else np.zeros(4) for artist in artists])
         self.artists[env_id] = artists
         self.symbols_done[env_id] = symbols_done
         self.n_symbols[env_id] = n_symbols
@@ -210,23 +217,28 @@ class Boards:
         self.artists = [[None for _ in range(18)] for _ in range(self.n_envs)] # That's how we will get the images
         self.target_symbols = np.zeros((self.n_envs, 18, self.n_pixels, self.n_pixels, 3))
         self.target_endpoints = np.zeros((self.n_envs, 18, 4))
-        self.barycenters = np.zeros((self.n_envs, 18, 2), dtype=int)
+        self.barycenters = np.zeros((self.n_envs, 18, 2), dtype=np.float32)
         self.boards = np.zeros((self.n_envs, self.n_pixels, self.n_pixels, 3), dtype=np.uint8)
         self.n_symbols = np.zeros(self.n_envs, dtype=int)
         self.positions_patch = np.stack([self.default_pos_patch for _ in range(self.n_envs)], axis=0)
+        self.times = np.zeros(self.n_envs, dtype=int)
+        self.epoch_rewards = np.zeros(self.n_envs, dtype=int)
         # Everyone starts at center of drawing board no matter what.
 
         for i in range(self.n_envs):
             if i == 0 or not self.all_envs_start_identical: 
-                board, artists, n_symbols, symbols_done = self._generate_one_board()
-                self.boards[i] = board
-                self.artists[i] = artists
-                self.barycenters[i] = np.array([artist.barycenter if artist is not None else (0., 0.) for artist in artists])
-                self.target_symbols[i] = np.array([artist.draw(np.zeros((self.n_pixels, self.n_pixels, 3))) if artist is not None else np.zeros((self.n_pixels, self.n_pixels, 3)) for artist in artists])
-                self.target_endpoints[i] = np.array([np.hstack([artist.start, artist.end]) if artist is not None else np.zeros(4) for artist in artists])
-                self.symbols_done[i] = symbols_done
-                self.n_symbols[i] = n_symbols
-                self.timeouts[i] = 2*n_symbols 
+                self._reset_one_env(i)
+                # board, artists, n_symbols, symbols_done = self._generate_one_board()
+                # self.boards[i] = board
+                # self.artists[i] = artists
+                # # self.barycenters[i] = np.array([artist.barycenter if artist is not None else (0., 0.) for artist in artists])
+                # self.barycenters[i] = np.array([artist.barycenter / 64. - 1. if artist is not None else (0., 0.) for artist in artists])
+                # self.target_symbols[i] = np.array([artist.draw(np.zeros((self.n_pixels, self.n_pixels, 3))) if artist is not None else np.zeros((self.n_pixels, self.n_pixels, 3)) for artist in artists])
+                # # self.target_endpoints[i] = np.array([np.hstack([artist.start, artist.end]) if artist is not None else np.zeros(4) for artist in artists])
+                # self.target_endpoints[i] = np.array([np.hstack([artist.start / 64. - 1., artist.end / 64. - 1.]) if artist is not None else np.zeros(4) for artist in artists])
+                # self.symbols_done[i] = symbols_done
+                # self.n_symbols[i] = n_symbols
+                # self.timeouts[i] = 2*n_symbols 
             else:
                 self.boards[i] = self.boards[0]
                 self.artists[i] = self.artists[0]
@@ -266,9 +278,7 @@ class Boards:
             if strengths[i] > 0.:
                 x1, y1 = (self.n_pixels * (self.positions[i] + 1.) / 2.).astype(int)
                 x2, y2 = (self.n_pixels * (new_positions[i] + 1.) / 2.).astype(int)
-                # new_draws[i] = cv2.line(np.zeros((self.n_pixels, self.n_pixels, 3), dtype=np.uint8), (x1, y1), (x2, y2), (0,0,1), 2)
                 new_draws[i] = cv2.line(np.zeros((self.n_pixels, self.n_pixels, 3), dtype=np.uint8), (y1, x1), (y2, x2), (0,0,1), 2)
-                # new_draws[i] = cv2.line(np.zeros((self.n_pixels, self.n_pixels, 3), dtype=np.uint8), (x1, y1), (x2, y2), (0,0,1), 2).transpose(1, 0, 2)
 
             new_boards[i] += new_draws[i]
         
@@ -415,7 +425,7 @@ if __name__ == '__main__':
         axes[0].set_title('Full observation')
         axes[1].imshow(boards.artists[env_id][0].draw(np.zeros_like(initial_img[env_id])).transpose(1,0,2), origin='lower')
         axes[1].set_title('left-bot most artist (alone)')
-        axes[2].imshow(boards.get_centered_patch(env_id, boards.artists[env_id][0].barycenter).transpose(1,0,2), origin='lower')
+        axes[2].imshow(boards.get_centered_patch(env_id, center=boards.artists[env_id][0].barycenter).transpose(1,0,2), origin='lower')
         axes[2].set_title('Punched-in view around barycenter of left-most artist')
         fig.savefig(test_dir + f'identical_envs_reset_imgs_{env_id}.png')
         plt.close(fig)
@@ -430,9 +440,9 @@ if __name__ == '__main__':
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
         axes[0].imshow(initial_img[env_id].transpose(1,0,2), origin='lower')
         axes[0].set_title('Full observation')
-        axes[1].imshow(boards.get_centered_patch(env_id, boards.artists[env_id][np.random.randint(18)].barycenter).transpose(1,0,2), origin='lower')
+        axes[1].imshow(boards.get_centered_patch(env_id, center=boards.artists[env_id][np.random.randint(18)].barycenter).transpose(1,0,2), origin='lower')
         axes[1].set_title('Punched-in view around barycenter of a random artist')
-        axes[2].imshow(boards.get_centered_patch(env_id, boards.artists[env_id][np.random.randint(18)].barycenter).transpose(1,0,2), origin='lower')
+        axes[2].imshow(boards.get_centered_patch(env_id, center=boards.artists[env_id][np.random.randint(18)].barycenter).transpose(1,0,2), origin='lower')
         axes[2].set_title('Punched-in view around barycenter of another random artist')
         fig.savefig(test_dir + f'dense_reset_imgs_{env_id}.png')
         plt.close(fig)

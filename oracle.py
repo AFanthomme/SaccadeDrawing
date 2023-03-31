@@ -36,13 +36,16 @@ class Oracle:
                 next_symbol_idx = np.argmin(envs.symbols_done[env_idx])
 
                 # Careful, need to convert to [-1, 1] range
-                barycenter = envs.barycenters[env_idx, next_symbol_idx] / 64. - 1.
+                # barycenter = envs.barycenters[env_idx, next_symbol_idx] / 64. - 1.
+                barycenter = envs.barycenters[env_idx, next_symbol_idx]
+                print(barycenter)
 
                 # Eye movement to center of next symbol (idea: comes from "peripheral vision" / the whole screen)
                 saccades[env_idx] = barycenter - positions[env_idx] + self.sample_noise()
 
                 # Eye movement directly to next line endpoints 
-                start_point, end_point = envs.target_endpoints[env_idx, next_symbol_idx, :2] / 64. - 1. , envs.target_endpoints[env_idx, next_symbol_idx, 2:] / 64. - 1.
+                # start_point, end_point = envs.target_endpoints[env_idx, next_symbol_idx, :2] / 64. - 1. , envs.target_endpoints[env_idx, next_symbol_idx, 2:] / 64. - 1.
+                start_point, end_point = envs.target_endpoints[env_idx, next_symbol_idx, :2] , envs.target_endpoints[env_idx, next_symbol_idx, 2:]
                 moves_to_start[env_idx] = start_point - positions[env_idx] + self.sample_noise()
                 moves_to_end[env_idx] = end_point - positions[env_idx] + self.sample_noise()
 
@@ -76,7 +79,7 @@ if __name__ == '__main__':
     import os
     from env import Boards
     import matplotlib.pyplot as plt
-    savepath = 'out/oracle_diagnostics'
+    savepath = 'out/oracle_tests'
     os.makedirs(savepath, exist_ok=True)
 
     board_params = {
@@ -104,6 +107,7 @@ if __name__ == '__main__':
         action, submoves = oracle.get_action_and_submoves(envs)
         saccades = submoves['saccades']
         pos_after_saccade = (envs.positions + saccades).copy()
+        # print(pos_after_saccade)
 
         # Just in case, and also to make it explicit we call get_center_patch with float position
         pos_after_saccade = np.clip(pos_after_saccade, -1, 1)
@@ -116,7 +120,7 @@ if __name__ == '__main__':
             fig, axes = plt.subplots(1, 2, figsize=(8, 4))
             axes[0].imshow(obs[env_idx].transpose(1, 0, 2), origin='lower', extent=[-1, 1, -1, 1])
             axes[0].plot([envs.positions[env_idx, 0], envs.positions[env_idx, 0] + action[env_idx, 0]], [envs.positions[env_idx, 1], envs.positions[env_idx, 1] + action[env_idx, 1]], color='gray', label='Total action')
-            axes[0].scatter([envs.positions[env_idx, 0] + saccades[env_idx, 0]], [envs.positions[env_idx, 1] +saccades[env_idx, 1]], color='m', marker='+', label='Initial saccade')
+            axes[0].scatter(pos_after_saccade[env_idx, 0], pos_after_saccade[env_idx, 1], color='m', marker='+', label='Initial saccade')
             axes[0].legend()
             axes[0].set_title('Global image')
 
