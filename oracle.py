@@ -36,9 +36,7 @@ class Oracle:
                 next_symbol_idx = np.argmin(envs.symbols_done[env_idx])
 
                 # Careful, need to convert to [-1, 1] range
-                # barycenter = envs.barycenters[env_idx, next_symbol_idx] / 64. - 1.
                 barycenter = envs.barycenters[env_idx, next_symbol_idx]
-                print(barycenter)
 
                 # Eye movement to center of next symbol (idea: comes from "peripheral vision" / the whole screen)
                 saccades[env_idx] = barycenter - positions[env_idx] + self.sample_noise()
@@ -107,7 +105,7 @@ if __name__ == '__main__':
 
         # Just in case, and also to make it explicit we call get_center_patch with float position
         pos_after_saccade = np.clip(pos_after_saccade, -1, 1)
-        fovea_image = [envs.get_centered_patch(env_idx, center_pos=pos_after_saccade[env_idx]) for env_idx in range(envs.n_envs)]
+        fovea_image = envs.get_centered_patches(center_pos=pos_after_saccade)
         homing_start = submoves['homes_to_start']
         homing_end = submoves['homes_to_end']
 

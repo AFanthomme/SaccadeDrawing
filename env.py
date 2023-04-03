@@ -135,13 +135,21 @@ class Boards:
         else:
             raise ValueError(f'Both barycenters {b1} and {b2} are in the same spawn zones !!')
 
-    def get_centered_patch(self, env_id: int, center=None, center_pos=None) -> np.ndarray:
-        assert not (center is None and center_pos is None)
-        if center is None:
+    def get_centered_patch(self, env_id: int, center_idx=None, center_pos=None) -> np.ndarray:
+        assert not (center_idx is None and center_pos is None)
+        if center_idx is None:
             # If center pos is a float, it's in [-1,1] and we need to convert it to pixels
-            center = np.array(((center_pos + 1.)/2.*self.n_pixels), dtype=int).clip(16, 112)
-        x, y = center
+            center_idx = np.array(((center_pos + 1.)/2.*self.n_pixels), dtype=int).clip(16, 112)
+        x, y = center_idx
         return self.boards[env_id, x-16:x+16, y-16:y+16]
+
+    def get_centered_patches(self, center_idx=None, center_pos=None) -> np.ndarray:
+        if center_idx is None and center_pos is not None:
+            return [self.get_centered_patch(i, center_idx=None, center_pos=center_pos[i]) for i in range(self.n_envs)]
+        elif center_pos is None and center_idx is not None:
+            return [self.get_centered_patch(i, center_idx=center_idx[i], center_pos=None) for i in range(self.n_envs)]
+        else:
+            raise ValueError('Exactly one of center and center_pos must be None')
 
     def _positions_to_patch(self, new_positions):
         positions_int = np.array(((new_positions + 1.)/2.*self.n_pixels), dtype=int)
@@ -395,7 +403,7 @@ if __name__ == '__main__':
         axes[0].set_title('Full observation')
         axes[1].imshow(boards.artists[env_id][0].draw(np.zeros_like(initial_img[env_id])).transpose(1,0,2), origin='lower')
         axes[1].set_title('left-bot most artist (alone)')
-        axes[2].imshow(boards.get_centered_patch(env_id, boards.artists[env_id][0].barycenter).transpose(1,0,2), origin='lower')
+        axes[2].imshow(boards.get_centered_patch(env_id, center_idx=boards.artists[env_id][0].barycenter).transpose(1,0,2), origin='lower')
         axes[2].set_title('Punched-in view around barycenter of left-most artist')
 
         axes[3].imshow(initial_img[env_id].transpose(1,0,2), origin='lower', extent=[-1,1,-1,1])
@@ -419,7 +427,7 @@ if __name__ == '__main__':
         axes[0].set_title('Full observation')
         axes[1].imshow(boards.artists[env_id][0].draw(np.zeros_like(initial_img[env_id])).transpose(1,0,2), origin='lower')
         axes[1].set_title('left-bot most artist (alone)')
-        axes[2].imshow(boards.get_centered_patch(env_id, center=boards.artists[env_id][0].barycenter).transpose(1,0,2), origin='lower')
+        axes[2].imshow(boards.get_centered_patch(env_id, center_idx=boards.artists[env_id][0].barycenter).transpose(1,0,2), origin='lower')
         axes[2].set_title('Punched-in view around barycenter of left-most artist')
         fig.savefig(test_dir + f'identical_envs_reset_imgs_{env_id}.png')
         plt.close(fig)
@@ -434,9 +442,9 @@ if __name__ == '__main__':
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
         axes[0].imshow(initial_img[env_id].transpose(1,0,2), origin='lower')
         axes[0].set_title('Full observation')
-        axes[1].imshow(boards.get_centered_patch(env_id, center=boards.artists[env_id][np.random.randint(18)].barycenter).transpose(1,0,2), origin='lower')
+        axes[1].imshow(boards.get_centered_patch(env_id, center_idx=boards.artists[env_id][np.random.randint(18)].barycenter).transpose(1,0,2), origin='lower')
         axes[1].set_title('Punched-in view around barycenter of a random artist')
-        axes[2].imshow(boards.get_centered_patch(env_id, center=boards.artists[env_id][np.random.randint(18)].barycenter).transpose(1,0,2), origin='lower')
+        axes[2].imshow(boards.get_centered_patch(env_id, center_idx=boards.artists[env_id][np.random.randint(18)].barycenter).transpose(1,0,2), origin='lower')
         axes[2].set_title('Punched-in view around barycenter of another random artist')
         fig.savefig(test_dir + f'dense_reset_imgs_{env_id}.png')
         plt.close(fig)
