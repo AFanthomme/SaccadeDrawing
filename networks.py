@@ -113,3 +113,16 @@ if __name__ == '__main__':
     net_params['rnn_size'] = 128
     net = ConvolutionalRecurrentNetwork(net_params)
     net(dummy_data)
+
+    net_params = {
+                'n_pixels_in': 32,
+                'cnn_n_featuremaps': [128, 64, 64],
+                'cnn_kernel_sizes': [5, 5, 3,],
+                'cnn_kernel_strides': [1, 1, 1,],
+                'fc_sizes': [512, 512],
+                'rnn_size': 512,
+                'recurrence_type': 'rnn',
+                'recurrent_steps': 1, # 1 step is equivalent to rec layer being feedforward, with same number of parameters !
+                }
+    net = ConvolutionalRecurrentNetwork(net_params)
+    net(dummy_data)

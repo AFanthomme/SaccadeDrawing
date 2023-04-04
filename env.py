@@ -145,9 +145,9 @@ class Boards:
 
     def get_centered_patches(self, center_idx=None, center_pos=None) -> np.ndarray:
         if center_idx is None and center_pos is not None:
-            return [self.get_centered_patch(i, center_idx=None, center_pos=center_pos[i]) for i in range(self.n_envs)]
+            return np.array([self.get_centered_patch(i, center_idx=None, center_pos=center_pos[i]) for i in range(self.n_envs)])
         elif center_pos is None and center_idx is not None:
-            return [self.get_centered_patch(i, center_idx=center_idx[i], center_pos=None) for i in range(self.n_envs)]
+            return np.array([self.get_centered_patch(i, center_idx=center_idx[i], center_pos=None) for i in range(self.n_envs)])
         else:
             raise ValueError('Exactly one of center and center_pos must be None')
 

@@ -74,19 +74,19 @@ class Buffer:
         if batch_inds is None:
             batch_inds = np.random.randint(0, self.current_size, size=batch_size)
         return_dict = {}
-        return_dict['obs'] = tch .tensor(self.buffer_obs[batch_inds], dtype=tch.float32).to(self.device).clone()
-        return_dict['actions'] = tch .tensor(self.buffer_actions[batch_inds], dtype=tch.float32).to(self.device).clone()
-        return_dict['rewards'] = tch .tensor(self.buffer_rewards[batch_inds], dtype=tch.float32).to(self.device).clone()
-        return_dict['n_symbols'] = tch .tensor(self.buffer_n_symbols[batch_inds], dtype=tch.long).to(self.device).clone()
-        return_dict['next_obs'] = tch .tensor(self.buffer_next_obs[batch_inds], dtype=tch.float32).to(self.device).clone()
-        return_dict['endpoints'] = tch .tensor(self.buffer_endpoints[batch_inds], dtype=tch.float32).to(self.device).clone()
-        return_dict['barycenters'] = tch .tensor(self.buffer_barycenters[batch_inds], dtype=tch.float32).to(self.device).clone()
-        return_dict['positions'] = tch .tensor(self.buffer_positions[batch_inds], dtype=tch.float32).to(self.device).clone()
-        return_dict['symbols_done'] = tch .tensor(self.buffer_symbols_done[batch_inds], dtype=tch.long).to(self.device).clone()
-        return_dict['new_positions'] = tch .tensor(self.buffer_new_positions[batch_inds], dtype=tch.float32).to(self.device).clone()
-        return_dict['oracle_actions'] = tch .tensor(self.buffer_oracle_actions[batch_inds], dtype=tch.float32).to(self.device).clone()
-        return_dict['oracle_saccades'] = tch .tensor(self.buffer_oracle_saccades[batch_inds], dtype=tch.float32).to(self.device).clone()
-        return_dict['fovea_after_saccade'] = tch .tensor(self.buffer_fovea_after_saccade[batch_inds], dtype=tch.float32).to(self.device).clone()
+        return_dict['obs'] = tch.tensor(self.buffer_obs[batch_inds], dtype=tch.float32).to(self.device).clone()
+        return_dict['actions'] = tch.tensor(self.buffer_actions[batch_inds], dtype=tch.float32).to(self.device).clone()
+        return_dict['rewards'] = tch.tensor(self.buffer_rewards[batch_inds], dtype=tch.float32).to(self.device).clone()
+        return_dict['n_symbols'] = tch.tensor(self.buffer_n_symbols[batch_inds], dtype=tch.long).to(self.device).clone()
+        return_dict['next_obs'] = tch.tensor(self.buffer_next_obs[batch_inds], dtype=tch.float32).to(self.device).clone()
+        return_dict['endpoints'] = tch.tensor(self.buffer_endpoints[batch_inds], dtype=tch.float32).to(self.device).clone()
+        return_dict['barycenters'] = tch.tensor(self.buffer_barycenters[batch_inds], dtype=tch.float32).to(self.device).clone()
+        return_dict['positions'] = tch.tensor(self.buffer_positions[batch_inds], dtype=tch.float32).to(self.device).clone()
+        return_dict['symbols_done'] = tch.tensor(self.buffer_symbols_done[batch_inds], dtype=tch.long).to(self.device).clone()
+        return_dict['new_positions'] = tch.tensor(self.buffer_new_positions[batch_inds], dtype=tch.float32).to(self.device).clone()
+        return_dict['oracle_actions'] = tch.tensor(self.buffer_oracle_actions[batch_inds], dtype=tch.float32).to(self.device).clone()
+        return_dict['oracle_saccades'] = tch.tensor(self.buffer_oracle_saccades[batch_inds], dtype=tch.float32).to(self.device).clone()
+        return_dict['fovea_after_saccade'] = tch.tensor(self.buffer_fovea_after_saccade[batch_inds], dtype=tch.float32).to(self.device).clone()
         return return_dict
 
     def save(self, path):

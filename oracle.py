@@ -90,7 +90,7 @@ if __name__ == '__main__':
     }
 
     envs = Boards(board_params, 777)
-    oracle = Oracle(sensitivity=.1, noise=.02, seed=777)
+    oracle = Oracle(sensitivity=.05, noise=.01, seed=777)
 
     # Test the oracle in an open loop setting
     t_tot = 40
@@ -131,7 +131,6 @@ if __name__ == '__main__':
             plt.close(fig)
 
         obs, reward, done, truncated, info = envs.step(action, done)
-
 
         for env_idx in range(5):
             if done[env_idx]:
