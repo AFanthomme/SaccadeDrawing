@@ -19,29 +19,55 @@ from types import SimpleNamespace
 symbol_types = ['line_0', 'line_1', 'line_2', 'line_3',]
 
 
-# Try for a bit more interactions between artists / symbols
+# # Try for a bit more interactions between artists / symbols
+# symbols_starts_in_bc_frame = {
+#     'line_0':  np.array([4, 16]),
+#     'line_1':  np.array([16, 4]),
+#     'line_2':  np.array([6, 6]),
+#     'line_3':  np.array([6, 26]),
+# }
+
+# symbols_ends_in_bc_frame = {
+#     'line_0':  np.array([28, 16]),
+#     'line_1':  np.array([16, 28]),
+#     'line_2':  np.array([26, 26]),
+#     'line_3':  np.array([26, 6]),
+# }
+
+# # Use always chennel last format for simplicity (h, w, 3)
+# # Transpose is here for the visual interpretability; doesn't matter for agent as long as positions are kept coherent.
+# types2patch = {
+#     'line_0':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (4, 16), (28, 16), (0,1,0), 2).transpose(1, 0, 2),
+#     'line_1':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (16, 4), (16, 28), (0,1,0), 2).transpose(1, 0, 2),
+#     'line_2':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (6, 6), (26, 26), (0,1,0), 2).transpose(1, 0, 2),
+#     'line_3':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (6, 26), (26, 6), (0,1,0), 2).transpose(1, 0, 2),
+# }
+
 symbols_starts_in_bc_frame = {
-    'line_0':  np.array([4, 16]),
-    'line_1':  np.array([16, 4]),
-    'line_2':  np.array([6, 6]),
-    'line_3':  np.array([6, 26]),
+    'line_0':  np.array([8, 16]),
+    'line_1':  np.array([16, 8]),
+    'line_2':  np.array([10, 10]),
+    'line_3':  np.array([10, 22]),
 }
 
 symbols_ends_in_bc_frame = {
-    'line_0':  np.array([28, 16]),
-    'line_1':  np.array([16, 28]),
-    'line_2':  np.array([26, 26]),
-    'line_3':  np.array([26, 6]),
+    'line_0':  np.array([24, 16]),
+    'line_1':  np.array([16, 24]),
+    'line_2':  np.array([22, 22]),
+    'line_3':  np.array([22, 10]),
 }
 
 # Use always chennel last format for simplicity (h, w, 3)
 # Transpose is here for the visual interpretability; doesn't matter for agent as long as positions are kept coherent.
 types2patch = {
-    'line_0':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (4, 16), (28, 16), (0,1,0), 2).transpose(1, 0, 2),
-    'line_1':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (16, 4), (16, 28), (0,1,0), 2).transpose(1, 0, 2),
-    'line_2':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (6, 6), (26, 26), (0,1,0), 2).transpose(1, 0, 2),
-    'line_3':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (6, 26), (26, 6), (0,1,0), 2).transpose(1, 0, 2),
+    'line_0':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (8, 16), (24, 16), (0,1,0), 2).transpose(1, 0, 2),
+    'line_1':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (16, 8), (16, 24), (0,1,0), 2).transpose(1, 0, 2),
+    'line_2':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (10, 10), (22, 22), (0,1,0), 2).transpose(1, 0, 2),
+    'line_3':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (10, 22), (22, 10), (0,1,0), 2).transpose(1, 0, 2),
 }
+
+
+
 
 def globalpixel2globalpos(global_pixel):
     return (global_pixel - 64.) / 64.
