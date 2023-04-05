@@ -18,12 +18,14 @@ from copy import deepcopy
 def main(args):
     args = SimpleNamespace(**args)
 
+    run_name = args.training_params['run_name'] + f"/seed{seed}"
+
     # Set up output folder
     root_output_folder = args.training_params['root_output_folder']
-    savepath = root_output_folder + args.training_params['run_name'] + "/"
+    savepath = root_output_folder + run_name + "/"
 
     os.makedirs(root_output_folder, exist_ok=True)
-    writer = SummaryWriter(root_output_folder + f"tensorboard/{args.training_params['run_name']}")
+    writer = SummaryWriter(root_output_folder + f"tensorboard/{run_name}")
     writer.add_text(
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
@@ -439,7 +441,7 @@ def run_one_seed(seed):
 
         'training_params': {
             # 'root_output_folder': 'out/saccade_model/',
-            'root_output_folder': 'scratch/atf6569/saccade_drawing/',
+            'root_output_folder': '/scratch/atf6569/saccade_drawing/',
             'run_name': 'test_run_',
             'n_updates': 10_000,
             'test_every': 500,
@@ -541,14 +543,43 @@ def run_one_seed(seed):
         'recurrence_type': 'gru',
         'recurrent_steps': 5, 
         }
+    
+    small_rec_peripheral_net_params = {
+        'n_pixels_in': 128,
+        'cnn_n_featuremaps': [32, 16, 16],
+        'cnn_kernel_sizes': [5, 3, 3, ],
+        'cnn_kernel_strides': [1, 1, 1,],
+        'fc_sizes': [64, 64],
+        'rnn_size': 64,
+        'recurrence_type': 'gru',
+        'recurrent_steps': 5, # 1 step is equivalent to rec layer being feedforward, with same number of parameters !
+        }
+    
+    small_rec_foveal_net_params = {
+        'n_pixels_in': 32,
+        'cnn_n_featuremaps': [32, 32, 32],
+        'cnn_kernel_sizes': [5, 5, 3,],
+        'cnn_kernel_strides': [1, 1, 1,],
+        'fc_sizes': [64, 64],
+        'rnn_size': 64,
+        'recurrence_type': 'gru',
+        'recurrent_steps': 5, # 1 step is equivalent to rec layer being feedforward, with same number of parameters !
+        }
 
-    net_names = ['big_rec', 'medium_rec', 'big_norec', 'small_norec']
-    peripheral_net_params = [small_no_rec_peripheral_net_params, medium_rec_peripheral_net_params, big_norec_peripheral_net_params]
-    foveal_net_params = [small_no_rec_foveal_net_params, medium_rec_foveal_net_params, big_norec_foveal_net_params]
+    # net_names = ['big_rec', 'medium_rec', 'big_norec', 'small_norec']
+    # peripheral_net_params = [small_no_rec_peripheral_net_params, medium_rec_peripheral_net_params, big_norec_peripheral_net_params]
+    # foveal_net_params = [small_no_rec_foveal_net_params, medium_rec_foveal_net_params, big_norec_foveal_net_params]
 
-    modified_args = deepcopy(args)
+    # For now, medium_rec is the best, but forgot to make run_name incorporate seed so no comparison...
+
+    net_names = ['small_norec', 'small_rec']
+    peripheral_net_params = [small_no_rec_peripheral_net_params, small_rec_peripheral_net_params]
+    foveal_net_params = [small_no_rec_foveal_net_params, small_rec_foveal_net_params]
+
     for net_name, peripheral_net_param, foveal_net_param in zip(net_names, peripheral_net_params, foveal_net_params):
-        for all_envs_start_identical in [True, False]:
+        # for all_envs_start_identical in [True, False]:
+        for all_envs_start_identical in [False]:
+            modified_args = deepcopy(args)    
             modified_args['agent_params']['peripheral_net_params'] = peripheral_net_param
             modified_args['agent_params']['foveal_net_params'] = foveal_net_param
             modified_args['training_params']['run_name'] = f'{net_name}_envs_identical_{all_envs_start_identical}'
@@ -557,6 +588,6 @@ def run_one_seed(seed):
 
 if __name__ == "__main__":
     from multiprocessing import Pool
-    n=8
+    n=6
     pool = Pool(n)
     pool.map(run_one_seed, range(n))
