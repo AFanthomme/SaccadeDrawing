@@ -11,37 +11,14 @@ import cv2
 
 from typing import List, Tuple, Dict, Union, Optional, Any  
 
-# Allows sorting using custon comparator
-from functools import cmp_to_key
+
+from functools import cmp_to_key, partial
 from types import SimpleNamespace
 
 
+# Keep the symbols outside of Board class for now, might change later
+
 symbol_types = ['line_0', 'line_1', 'line_2', 'line_3',]
-
-
-# # Try for a bit more interactions between artists / symbols
-# symbols_starts_in_bc_frame = {
-#     'line_0':  np.array([4, 16]),
-#     'line_1':  np.array([16, 4]),
-#     'line_2':  np.array([6, 6]),
-#     'line_3':  np.array([6, 26]),
-# }
-
-# symbols_ends_in_bc_frame = {
-#     'line_0':  np.array([28, 16]),
-#     'line_1':  np.array([16, 28]),
-#     'line_2':  np.array([26, 26]),
-#     'line_3':  np.array([26, 6]),
-# }
-
-# # Use always chennel last format for simplicity (h, w, 3)
-# # Transpose is here for the visual interpretability; doesn't matter for agent as long as positions are kept coherent.
-# types2patch = {
-#     'line_0':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (4, 16), (28, 16), (0,1,0), 2).transpose(1, 0, 2),
-#     'line_1':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (16, 4), (16, 28), (0,1,0), 2).transpose(1, 0, 2),
-#     'line_2':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (6, 6), (26, 26), (0,1,0), 2).transpose(1, 0, 2),
-#     'line_3':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (6, 26), (26, 6), (0,1,0), 2).transpose(1, 0, 2),
-# }
 
 symbols_starts_in_bc_frame = {
     'line_0':  np.array([8, 16]),
@@ -59,6 +36,7 @@ symbols_ends_in_bc_frame = {
 
 # Use always chennel last format for simplicity (h, w, 3)
 # Transpose is here for the visual interpretability; doesn't matter for agent as long as positions are kept coherent.
+
 types2patch = {
     'line_0':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (8, 16), (24, 16), (0,1,0), 2).transpose(1, 0, 2),
     'line_1':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (16, 8), (16, 24), (0,1,0), 2).transpose(1, 0, 2),
@@ -66,14 +44,6 @@ types2patch = {
     'line_3':  cv2.line(np.zeros((32, 32, 3), dtype=np.uint8), (10, 22), (22, 10), (0,1,0), 2).transpose(1, 0, 2),
 }
 
-
-
-
-def globalpixel2globalpos(global_pixel):
-    return (global_pixel - 64.) / 64.
-
-def localpixel2localpos(local_pixel):
-    return (local_pixel - 16.) / 16.
 
 
 class Artist:
@@ -140,6 +110,29 @@ class Boards:
 
         ]
 
+        # Defines the rules 
+
+        self.rules_names = ['rightward', 'leftward', 'upward', 'downward']
+
+        common_bkg = np.zeros((128, 128, 3), dtype=np.uint8)
+
+        self.rule_border_colors = {
+            'leftward': (0, 0, 0),
+            'rightward': (0.5, 0.5, 0.5),
+            'upward': (0, 1., 1.),
+            'downward': (1., 0, 1.),
+        }
+
+        self.backgrounds = {}
+
+        for k,v in self.rule_border_colors.items():
+            self.backgrounds[k] = common_bkg.copy()
+            self.backgrounds[k][:, :4, :] = v
+            self.backgrounds[k][:, -4:, :] = v
+            self.backgrounds[k][:4, :, :] = v
+            self.backgrounds[k][-4:, :, :] = v
+
+
         self.default_pos_patch = np.zeros((128, 128, 3), dtype=np.uint8)
         self.default_pos_patch = cv2.circle(self.default_pos_patch, (64,64), 2, (1,0,0), -1)
 
@@ -150,16 +143,32 @@ class Boards:
         logging.critical(f'Called world.set_seed with seed {self.seed}')
         self.np_random = np.random.RandomState(seed=self.seed)
 
-   
-    def __leq_barycenters(self, b1, b2):
-        # This ordering must reflect the task: first (not done) here is the first that needs to be drawn !
-        # Does not allow branching orders (\eg if you start with circles, finish circles first), but for now more than enough
-        if b1[0] != b2[0]:
-            return b1[0] - b2[0]
-        elif b1[1] != b2[1]: 
-            return b1[1] - b2[1]
-        else:
-            raise ValueError(f'Both barycenters {b1} and {b2} are in the same spawn zones !!')
+    @staticmethod
+    def rule_defined_ordering(rule, b1, b2):
+        if rule == 'rightward':
+            if b1[0] != b2[0]:
+                return b1[0]-b2[0]
+            else:
+                # Tie-breaker
+                return b1[1]-b2[1] 
+        elif rule == 'leftward':
+            if b1[0] != b2[0]:
+                return b2[0]-b1[0]
+            else:
+                # Tie-breaker, opposite to rightward for more variety
+                return b2[1]-b1[1] 
+        elif rule == 'upward':
+            if b1[1] != b2[1]:
+                return b1[1]-b2[1]
+            else:
+                # Tie-breaker
+                return b1[0]-b2[0]
+        elif rule == 'downward':
+            if b1[1] != b2[1]:
+                return b2[1]-b1[1]
+            else:
+                # Tie-breaker, opposite to upward for more variety
+                return b2[0]-b1[0]
 
     def get_centered_patch(self, env_id: int, center_idx=None, center_pos=None) -> np.ndarray:
         assert not (center_idx is None and center_pos is None)
@@ -184,7 +193,9 @@ class Boards:
             patches[i] = cv2.circle(patches[i], tuple(pos), 2, (1,0,0), -1)
         return patches
     
-    def _generate_one_board(self):
+    def _generate_one_board(self, rule_idx):
+        rule_name = self.rules_names[rule_idx]
+
         n_symbols = self.np_random.randint(self.n_symbols_min, self.n_symbols_max+1)
         symbols_done = np.zeros(18, dtype=bool) # Hardcode max, but might want to use lower
         symbols_done[n_symbols:] = True # Non existent symbols are still considered as symbols, just already done
@@ -200,8 +211,7 @@ class Boards:
             barycenters[i] = np.array([x, y])
 
         tmp = barycenters[:n_symbols].copy()
-        # tmp = sorted(tmp, key=cmp_to_key(self.__leq_barycenters))
-        tmp = sorted(tmp, key=cmp_to_key(self.__leq_barycenters))
+        tmp = sorted(tmp, key=cmp_to_key(partial(self.rule_defined_ordering, rule_name))) # This is where we need to use the rule-based ordering
         barycenters[:n_symbols] = tmp
 
         # Then, choose the symbols and make the artists
@@ -212,7 +222,7 @@ class Boards:
             artists[i] = Artist(barycenter, symbol_types[symbol_int]) 
 
         # Finally, put the patches on a board
-        board = np.zeros((128, 128, 3), dtype=np.uint8)     
+        board = self.backgrounds[rule_name]
         for artist in artists:
             if artist is not None:
                 board = artist.draw(board)
@@ -221,7 +231,8 @@ class Boards:
     
 
     def _reset_one_env(self, env_id):
-        board, artists, n_symbols, symbols_done = self._generate_one_board()
+        self.rules_idx[env_id] = self.np_random.randint(len(self.rules_names))
+        board, artists, n_symbols, symbols_done = self._generate_one_board(rule_idx=self.rules_idx[env_id])
         self.boards[env_id] = board
         tmp = np.array([artist.barycenter if artist is not None else [0., 0.] for artist in artists])
         tmp = tmp / 64. - 1.
@@ -253,7 +264,8 @@ class Boards:
         self.positions_patch = np.stack([self.default_pos_patch for _ in range(self.n_envs)], axis=0)
         self.times = np.zeros(self.n_envs, dtype=int)
         self.epoch_rewards = np.zeros(self.n_envs, dtype=int)
-        # Everyone starts at center of drawing board no matter what.
+        
+        self.rules_idx = np.zeros(self.n_envs, dtype=int)
 
         for i in range(self.n_envs):
             if i == 0 or not self.all_envs_start_identical: 
@@ -267,6 +279,8 @@ class Boards:
                 self.symbols_done[i] = self.symbols_done[0]
                 self.n_symbols[i] = self.n_symbols[0]
                 self.timeouts[i] = self.timeouts[0]
+
+                self.rules_idx[i] = self.rules_idx[0]
 
         self.boards += self.positions_patch
         self.times = np.zeros(self.n_envs, dtype=int)
@@ -378,7 +392,7 @@ class Boards:
 
 
 if __name__ == '__main__':
-    test_dir = 'out/board_tests/'
+    test_dir = 'out/rule_board_tests/'
     os.makedirs(test_dir, exist_ok=True)
 
 
