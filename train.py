@@ -399,8 +399,9 @@ def run_one_seed(seed):
             'n_symbols_max': 3,
             'reward_type': 'default',
             'reward_params':  {'overlap_criterion': .2},
+            'ordering_sensitivity': 0, # in pixels
             # 'all_envs_start_identical': True, 
-            # 'all_envs_start_identical': False, 
+            'all_envs_start_identical': False, 
             # Ensures we see different trjaectories for each realization of lines, will be mixed in buffer so no "single env minibatches"
         },
 
@@ -588,7 +589,27 @@ def run_one_seed(seed):
         'recurrent_steps': 5, # 1 step is equivalent to rec layer being feedforward, with same number of parameters !
         }
 
-
+    medium_plus_peripheral_net_params = {
+        'n_pixels_in': 128,
+        'cnn_n_featuremaps': [64, 128, 128, 64, 64],
+        'cnn_kernel_sizes': [5, 5, 3, 3, 3],
+        'cnn_kernel_strides': [1, 1, 1, 1, 1],
+        'fc_sizes': [512, 512, 512],
+        'rnn_size': 512,
+        'recurrence_type': 'rnn',
+        'recurrent_steps': 1, 
+        }
+    
+    medium_plus_foveal_net_params = {
+        'n_pixels_in': 32,
+        'cnn_n_featuremaps': [128, 64, 64],
+        'cnn_kernel_sizes': [5, 5, 3,],
+        'cnn_kernel_strides': [1, 1, 1,],
+        'fc_sizes': [512, 512],
+        'rnn_size': 512,
+        'recurrence_type': 'rnn',
+        'recurrent_steps': 1, 
+        }
 
     # net_names = ['small_norec', 'small_rec']
     # peripheral_net_params = [small_no_rec_peripheral_net_params, small_rec_peripheral_net_params]
@@ -609,6 +630,8 @@ def run_one_seed(seed):
     #         modified_args['board_params']['all_envs_start_identical'] = all_envs_start_identical
     #         main(modified_args)
 
+
+
     # net_names = ['medium_norec', ]
     # peripheral_net_params = [medium_norec_peripheral_net_params]
     # foveal_net_params = [medium_norec_foveal_net_params]
@@ -623,9 +646,44 @@ def run_one_seed(seed):
     #         modified_args['board_params']['all_envs_start_identical'] = all_envs_start_identical
     #         main(modified_args)
 
-    net_names = ['big_norec', 'big_rec']
-    peripheral_net_params = [medium_norec_peripheral_net_params]
-    foveal_net_params = [medium_norec_foveal_net_params]
+
+    # # MAybe it will reduce the number of edge cases ?
+    # net_names = ['medium_norec_higher_sensitivity']
+    # peripheral_net_params = [medium_norec_peripheral_net_params]
+    # foveal_net_params = [medium_norec_foveal_net_params]
+
+    # for net_name, peripheral_net_param, foveal_net_param in zip(net_names, peripheral_net_params, foveal_net_params):
+    #     # for all_envs_start_identical in [True, False]:
+    #     for all_envs_start_identical in [False]:
+    #         modified_args = deepcopy(args)    
+    #         modified_args['agent_params']['peripheral_net_params'] = peripheral_net_param
+    #         modified_args['agent_params']['foveal_net_params'] = foveal_net_param
+    #         modified_args['training_params']['run_name'] = f'{net_name}_envs_identical_{all_envs_start_identical}'
+    #         modified_args['board_params']['all_envs_start_identical'] = all_envs_start_identical
+    #         modified_args['board_params']['ordering_sensitivity'] = 3 
+    #         main(modified_args)
+
+
+    # Does not make any meaningful difference
+    # Did not actually run.....
+    # net_names = ['big_norec', 'big_rec']
+    # peripheral_net_params = [big_norec_peripheral_net_params, big_rec_peripheral_net_params]
+    # foveal_net_params = [big_norec_foveal_net_params, big_rec_foveal_net_params]
+
+    # for net_name, peripheral_net_param, foveal_net_param in zip(net_names, peripheral_net_params, foveal_net_params):
+    #     # for all_envs_start_identical in [True, False]:
+    #     for all_envs_start_identical in [False]:
+    #         modified_args = deepcopy(args)    
+    #         modified_args['agent_params']['peripheral_net_params'] = peripheral_net_param
+    #         modified_args['agent_params']['foveal_net_params'] = foveal_net_param
+    #         modified_args['training_params']['run_name'] = f'{net_name}_envs_identical_{all_envs_start_identical}'
+    #         modified_args['board_params']['all_envs_start_identical'] = all_envs_start_identical
+    #         main(modified_args)
+
+    # MAybe it will reduce the number of edge cases ?
+    net_names = ['medium_plus_higher_sensitivity']
+    peripheral_net_params = [medium_plus_peripheral_net_params]
+    foveal_net_params = [medium_plus_foveal_net_params]
 
     for net_name, peripheral_net_param, foveal_net_param in zip(net_names, peripheral_net_params, foveal_net_params):
         # for all_envs_start_identical in [True, False]:
@@ -636,6 +694,7 @@ def run_one_seed(seed):
             modified_args['training_params']['run_name'] = f'{net_name}_envs_identical_{all_envs_start_identical}'
             modified_args['board_params']['all_envs_start_identical'] = all_envs_start_identical
             main(modified_args)
+
 
 if __name__ == "__main__":
     from multiprocessing import Pool

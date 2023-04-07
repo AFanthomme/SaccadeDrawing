@@ -104,6 +104,7 @@ class Boards:
         self.reward_type = board_params['reward_type']
         self.reward_params = SimpleNamespace(**board_params['reward_params'])
         self.all_envs_start_identical = board_params['all_envs_start_identical']
+        self.ordering_sensitivity = board_params['ordering_sensitivity']
 
         # See figure for explanations
         # format is (xmin, xmax), (ymin, ymax)
@@ -154,12 +155,13 @@ class Boards:
     def __leq_barycenters(self, b1, b2):
         # This ordering must reflect the task: first (not done) here is the first that needs to be drawn !
         # Does not allow branching orders (\eg if you start with circles, finish circles first), but for now more than enough
-        if b1[0] != b2[0]:
+        if abs(b1[0] - b2[0]) > self.ordering_sensitivity:
             return b1[0] - b2[0]
-        elif b1[1] != b2[1]: 
+        # elif b1[1] != b2[1]: 
+        else: 
             return b1[1] - b2[1]
-        else:
-            raise ValueError(f'Both barycenters {b1} and {b2} are in the same spawn zones !!')
+        # else:
+        #     raise ValueError(f'Both barycenters {b1} and {b2} are in the same spawn zones !!')
 
     def get_centered_patch(self, env_id: int, center_idx=None, center_pos=None) -> np.ndarray:
         assert not (center_idx is None and center_pos is None)
@@ -409,6 +411,7 @@ if __name__ == '__main__':
         'reward_type': 'default',
         'reward_params':  {'overlap_criterion': .4},
         'all_envs_start_identical': False,
+        'ordering_sensitivity': 0, # in pixels
     }
 
     # Second, make sure the spawn zones are reasonable

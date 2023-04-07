@@ -134,6 +134,7 @@ if __name__ == '__main__':
         'reward_type': 'default',
         'reward_params': {'overlap_criterion': .4},
         'all_envs_start_identical': False,
+        'ordering_sensitivity': 0, # in pixels
     }
 
     # Important: seeding
