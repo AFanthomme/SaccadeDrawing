@@ -105,6 +105,7 @@ class Boards:
         self.reward_params = SimpleNamespace(**board_params['reward_params'])
         self.all_envs_start_identical = board_params['all_envs_start_identical']
         self.ordering_sensitivity = board_params['ordering_sensitivity']
+        self.timeout = board_params['timeout'] # Expected to be None by default
 
         # See figure for explanations
         # format is (xmin, xmax), (ymin, ymax)
@@ -195,11 +196,27 @@ class Boards:
         # First, draw the spawn zones
         spawn_ranges = self.np_random.permutation(self.spawn_zones)[:n_symbols]
 
-        # print('spawn_ranges', spawn_ranges)
+        # Default
+        # for i, (x_range, y_range) in enumerate(spawn_ranges):
+        #     x = self.np_random.randint(x_range[0], x_range[1])
+        #     y = self.np_random.randint(y_range[0], y_range[1])
+        #     barycenters[i] = np.array([x, y])
+
+        # New: remove any ambiguously ordered barycenters 
         for i, (x_range, y_range) in enumerate(spawn_ranges):
-            x = self.np_random.randint(x_range[0], x_range[1])
-            y = self.np_random.randint(y_range[0], y_range[1])
-            barycenters[i] = np.array([x, y])
+            loop = True
+            while loop:
+                x = self.np_random.randint(x_range[0], x_range[1])
+                y = self.np_random.randint(y_range[0], y_range[1])
+                barycenters[i] = np.array([x, y])
+                if i == 0:
+                    loop = False
+                else:
+                    for k in range(i):
+                        if abs(barycenters[i, 0] - barycenters[k, 0]) <= 1 or abs(barycenters[i, 1] - barycenters[k, 1]) <= 1:
+                            break
+                        else:
+                            loop = False
 
         tmp = barycenters[:n_symbols].copy()
         # tmp = sorted(tmp, key=cmp_to_key(self.__leq_barycenters))
@@ -412,6 +429,7 @@ if __name__ == '__main__':
         'reward_params':  {'overlap_criterion': .4},
         'all_envs_start_identical': False,
         'ordering_sensitivity': 0, # in pixels
+        'timeout': None,
     }
 
     # Second, make sure the spawn zones are reasonable

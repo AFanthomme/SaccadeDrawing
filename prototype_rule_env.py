@@ -66,7 +66,7 @@ class Artist:
         return board
 
 # This will be for the "global state"   
-class Boards:
+class RuleBoards:
     def __init__(self, board_params, seed=0):
         self.seed = seed
         self.n_pixels = 128 # Hardcoded as we want a fancy setup.
@@ -77,6 +77,8 @@ class Boards:
         self.reward_type = board_params['reward_type']
         self.reward_params = SimpleNamespace(**board_params['reward_params'])
         self.all_envs_start_identical = board_params['all_envs_start_identical']
+        self.allowed_symbols = board_params['allowed_symbols']
+        self.allowed_rules = board_params['allowed_rules']
 
         # See figure for explanations
         # format is (xmin, xmax), (ymin, ymax)
@@ -115,26 +117,28 @@ class Boards:
 
         # Defines the rules 
 
-        self.rules_names = ['rightward', 'leftward', 'upward', 'downward']
-
-        common_bkg = np.zeros((128, 128, 3), dtype=np.uint8)
+        self.rules_names = ['closest', 'rightward', 'leftward', 'upward', 'downward']
 
         self.rule_border_colors = {
-            'leftward': (0, 0, 0),
-            'rightward': (0.5, 0.5, 0.5),
-            'upward': (0, 1., 1.),
-            'downward': (1., 0, 1.),
+            'closest': np.array([0, 0, 0]),
+            'leftward': np.array([.5, .5, 0]),
+            'rightward': np.array([0.5, 0.5, 0.5]),
+            'upward': np.array([0, .5, .5]),
+            'downward': np.array([.5, 0, .5]),
         }
 
         self.backgrounds = {}
 
         for k,v in self.rule_border_colors.items():
-            self.backgrounds[k] = common_bkg.copy()
-            self.backgrounds[k][:, :4, :] = v
-            self.backgrounds[k][:, -4:, :] = v
-            self.backgrounds[k][:4, :, :] = v
-            self.backgrounds[k][-4:, :, :] = v
-
+            bkg = np.zeros((128, 128, 3), dtype=np.float32)
+            bkg[0, 0] = 1
+            tmp = np.tile(v, (128, 4, 1))
+            bkg[:, :4, :] = tmp.copy()
+            bkg[:, -4:, :] = tmp.copy()
+            tmp = np.tile(v, (4, 128, 1))
+            bkg[:4, :, :] = tmp.copy()
+            bkg[-4:, :, :] = tmp.copy()
+            self.backgrounds[k] = bkg.copy()
 
         self.default_pos_patch = np.zeros((128, 128, 3), dtype=np.uint8)
         self.default_pos_patch = cv2.circle(self.default_pos_patch, (64,64), 2, (1,0,0), -1)
@@ -148,7 +152,8 @@ class Boards:
 
     @staticmethod
     def rule_defined_ordering(rule, b1, b2):
-        if rule == 'rightward':
+        # TODO: 'closest' will require something different in Oracle, but in any case it needs full rework for rule so it's ok
+        if rule == 'rightward' or rule == 'closest':
             if b1[0] != b2[0]:
                 return b1[0]-b2[0]
             else:
@@ -197,8 +202,8 @@ class Boards:
         return patches
     
     def _generate_one_board(self, rule_idx):
-        rule_name = self.rules_names[rule_idx]
-
+        # rule_name = self.rules_names[rule_idx]
+        rule_name = self.allowed_rules[rule_idx]
         n_symbols = self.np_random.randint(self.n_symbols_min, self.n_symbols_max+1)
         symbols_done = np.zeros(18, dtype=bool) # Hardcode max, but might want to use lower
         symbols_done[n_symbols:] = True # Non existent symbols are still considered as symbols, just already done
@@ -207,11 +212,28 @@ class Boards:
         # First, draw the spawn zones
         spawn_ranges = self.np_random.permutation(self.spawn_zones)[:n_symbols]
 
-        # print('spawn_ranges', spawn_ranges)
+        # Default
+        # for i, (x_range, y_range) in enumerate(spawn_ranges):
+        #     x = self.np_random.randint(x_range[0], x_range[1])
+        #     y = self.np_random.randint(y_range[0], y_range[1])
+        #     barycenters[i] = np.array([x, y])
+
+        # New: remove any ambiguously ordered barycenters 
+        # Careful as this might become slow if there are too many lines...
         for i, (x_range, y_range) in enumerate(spawn_ranges):
-            x = self.np_random.randint(x_range[0], x_range[1])
-            y = self.np_random.randint(y_range[0], y_range[1])
-            barycenters[i] = np.array([x, y])
+            loop = True
+            while loop:
+                x = self.np_random.randint(x_range[0], x_range[1])
+                y = self.np_random.randint(y_range[0], y_range[1])
+                barycenters[i] = np.array([x, y])
+                if i == 0:
+                    loop = False
+                else:
+                    for k in range(i):
+                        if abs(barycenters[i, 0] - barycenters[k, 0]) <= 1 or abs(barycenters[i, 1] - barycenters[k, 1]) <= 1:
+                            break
+                        else:
+                            loop = False
 
         tmp = barycenters[:n_symbols].copy()
         tmp = sorted(tmp, key=cmp_to_key(partial(self.rule_defined_ordering, rule_name))) # This is where we need to use the rule-based ordering
@@ -225,7 +247,7 @@ class Boards:
             artists[i] = Artist(barycenter, symbol_types[symbol_int]) 
 
         # Finally, put the patches on a board
-        board = self.backgrounds[rule_name]
+        board = self.backgrounds[rule_name].copy()
         for artist in artists:
             if artist is not None:
                 board = artist.draw(board)
@@ -234,7 +256,9 @@ class Boards:
     
 
     def _reset_one_env(self, env_id):
-        self.rules_idx[env_id] = self.np_random.randint(len(self.rules_names))
+        # self.rules_idx[env_id] = self.np_random.randint(len(self.rules_names))
+        self.rules_idx[env_id] = self.np_random.randint(len(self.allowed_rules))
+        self.rules[env_id] = self.allowed_rules[self.rules_idx[env_id]]
         board, artists, n_symbols, symbols_done = self._generate_one_board(rule_idx=self.rules_idx[env_id])
         self.boards[env_id] = board
         tmp = np.array([artist.barycenter if artist is not None else [0., 0.] for artist in artists])
@@ -262,13 +286,14 @@ class Boards:
         self.target_symbols = np.zeros((self.n_envs, 18, self.n_pixels, self.n_pixels, 3))
         self.target_endpoints = np.zeros((self.n_envs, 18, 4))
         self.barycenters = np.zeros((self.n_envs, 18, 2), dtype=np.float32)
-        self.boards = np.zeros((self.n_envs, self.n_pixels, self.n_pixels, 3), dtype=np.uint8)
+        self.boards = np.zeros((self.n_envs, self.n_pixels, self.n_pixels, 3), dtype=np.float32)
         self.n_symbols = np.zeros(self.n_envs, dtype=int)
         self.positions_patch = np.stack([self.default_pos_patch for _ in range(self.n_envs)], axis=0)
         self.times = np.zeros(self.n_envs, dtype=int)
         self.epoch_rewards = np.zeros(self.n_envs, dtype=int)
         
         self.rules_idx = np.zeros(self.n_envs, dtype=int)
+        self.rules = np.array(['leftward' for _ in range(self.n_envs)], dtype=object)
 
         for i in range(self.n_envs):
             if i == 0 or not self.all_envs_start_identical: 
@@ -282,8 +307,8 @@ class Boards:
                 self.symbols_done[i] = self.symbols_done[0]
                 self.n_symbols[i] = self.n_symbols[0]
                 self.timeouts[i] = self.timeouts[0]
-
                 self.rules_idx[i] = self.rules_idx[0]
+                self.rules[i] = self.rules[0]
 
         self.boards += self.positions_patch
         self.times = np.zeros(self.n_envs, dtype=int)
@@ -398,8 +423,7 @@ if __name__ == '__main__':
     test_dir = 'out/rule_board_tests/'
     os.makedirs(test_dir, exist_ok=True)
 
-
-    # First, make sure our artists for the different symbols are working
+    # Check our artists for the different symbols are working
     for symbol_type in symbol_types:
         for rep in range(3):
             artist_params = {
@@ -426,10 +450,21 @@ if __name__ == '__main__':
         'reward_type': 'default',
         'reward_params':  {'overlap_criterion': .4},
         'all_envs_start_identical': False,
+        'allowed_symbols': ['line_0', 'line_1', 'line_2', 'line_3'],
+        'allowed_rules': ['rightward', 'leftward', 'upward', 'downward'],
     }
+    boards = RuleBoards(board_params)
+
+    # Check the color borders
+    for k,v in boards.rule_border_colors.items():
+        plt.figure()
+        plt.imshow(boards.backgrounds[k])
+        plt.title(f'Rule: {k}')
+        plt.savefig(test_dir+f'background_{k}.png')
+        plt.close('all')
+        
 
     # Second, make sure the spawn zones are reasonable
-    boards = Boards(board_params)
     fig, ax = plt.subplots()
     ax.imshow(np.zeros((128, 128, 3), dtype=int), origin='lower')
     for zone_id, spawn_zone in enumerate(boards.spawn_zones):
@@ -439,7 +474,7 @@ if __name__ == '__main__':
 
 
     # Third, make sure the boards are being generated correctly at reset
-    boards = Boards(board_params)
+    boards = RuleBoards(board_params)
     initial_img = boards.reset()
     for env_id in range(10):
         fig, axes = plt.subplots(1, 4, figsize=(20, 5))
@@ -463,9 +498,9 @@ if __name__ == '__main__':
         plt.close(fig)
 
     board_params['all_envs_start_identical'] = True
-    boards = Boards(board_params)
+    boards = RuleBoards(board_params)
     initial_img = boards.reset()
-    for env_id in range(10):
+    for env_id in range(3):
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
         axes[0].imshow(initial_img[env_id].transpose(1,0,2), origin='lower')
         axes[0].set_title('Full observation')
@@ -476,20 +511,20 @@ if __name__ == '__main__':
         fig.savefig(test_dir + f'identical_envs_reset_imgs_{env_id}.png')
         plt.close(fig)
 
-
-    board_params['all_envs_start_identical'] = False
-    board_params['n_symbols_max'] = 18
-    board_params['n_symbols_min'] = 18
-    boards = Boards(board_params)
-    initial_img = boards.reset()
-    for env_id in range(5):
-        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        axes[0].imshow(initial_img[env_id].transpose(1,0,2), origin='lower')
-        axes[0].set_title('Full observation')
-        axes[1].imshow(boards.get_centered_patch(env_id, center_idx=boards.artists[env_id][np.random.randint(18)].barycenter).transpose(1,0,2), origin='lower')
-        axes[1].set_title('Punched-in view around barycenter of a random artist')
-        axes[2].imshow(boards.get_centered_patch(env_id, center_idx=boards.artists[env_id][np.random.randint(18)].barycenter).transpose(1,0,2), origin='lower')
-        axes[2].set_title('Punched-in view around barycenter of another random artist')
-        fig.savefig(test_dir + f'dense_reset_imgs_{env_id}.png')
-        plt.close(fig)
+    # This one is not very interesting
+    # board_params['all_envs_start_identical'] = False
+    # board_params['n_symbols_max'] = 18
+    # board_params['n_symbols_min'] = 18
+    # boards = RuleBoards(board_params)
+    # initial_img = boards.reset()
+    # for env_id in range(5):
+    #     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    #     axes[0].imshow(initial_img[env_id].transpose(1,0,2), origin='lower')
+    #     axes[0].set_title('Full observation')
+    #     axes[1].imshow(boards.get_centered_patch(env_id, center_idx=boards.artists[env_id][np.random.randint(18)].barycenter).transpose(1,0,2), origin='lower')
+    #     axes[1].set_title('Punched-in view around barycenter of a random artist')
+    #     axes[2].imshow(boards.get_centered_patch(env_id, center_idx=boards.artists[env_id][np.random.randint(18)].barycenter).transpose(1,0,2), origin='lower')
+    #     axes[2].set_title('Punched-in view around barycenter of another random artist')
+    #     fig.savefig(test_dir + f'dense_reset_imgs_{env_id}.png')
+    #     plt.close(fig)
 

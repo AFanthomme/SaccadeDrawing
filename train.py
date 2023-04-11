@@ -15,13 +15,13 @@ from types import SimpleNamespace
 from copy import deepcopy
 
 
-def main(args):
+def train(args):
     args = SimpleNamespace(**args)
 
-    run_name = args.training_params['run_name'] + f"/seed{args.seed}"
+    run_name = args.run_name + f"/seed{args.seed}"
 
     # Set up output folder
-    root_output_folder = args.training_params['root_output_folder']
+    root_output_folder = args.root_output_folder
     savepath = root_output_folder + run_name + "/"
 
     os.makedirs(root_output_folder, exist_ok=True)
@@ -390,9 +390,15 @@ def main(args):
             # Delete all tests variables to avoid any unintended side-effect
             del test_reward, test_done, test_info, test_homings, test_saccades, test_action, test_pos_after_saccade, test_fovea_image
 
+    tch.save(agent.state_dict(), savepath + f"/final_agent.pt")
+
 def run_one_seed(seed):
     args = {
         'seed': seed,
+        'root_output_folder': '/scratch/atf6569/saccade_drawing/initial_exps/',
+        # 'root_output_folder': '~/Scratch/atf6569/saccade_drawing/initial_exps/',
+        'run_name': 'test_run_',
+
         'board_params': {
             'n_envs': 32,
             'n_symbols_min': 2,
@@ -441,9 +447,6 @@ def run_one_seed(seed):
         },
 
         'training_params': {
-            # 'root_output_folder': 'out/saccade_model/',
-            'root_output_folder': '/scratch/atf6569/saccade_drawing/',
-            'run_name': 'test_run_',
             'n_updates': 10_000,
             'test_every': 500,
             'lr': 5e-4,
@@ -457,51 +460,9 @@ def run_one_seed(seed):
         },
     }
 
-    small_no_rec_peripheral_net_params = {
-        'n_pixels_in': 128,
-        'cnn_n_featuremaps': [32, 16, 16],
-        'cnn_kernel_sizes': [5, 3, 3, ],
-        'cnn_kernel_strides': [1, 1, 1,],
-        'fc_sizes': [64, 64],
-        'rnn_size': 64,
-        'recurrence_type': 'rnn',
-        'recurrent_steps': 1, # 1 step is equivalent to rec layer being feedforward, with same number of parameters !
-        }
+
     
-    small_no_rec_foveal_net_params = {
-        'n_pixels_in': 32,
-        'cnn_n_featuremaps': [32, 32, 32],
-        'cnn_kernel_sizes': [5, 5, 3,],
-        'cnn_kernel_strides': [1, 1, 1,],
-        'fc_sizes': [64, 64],
-        'rnn_size': 64,
-        'recurrence_type': 'rnn',
-        'recurrent_steps': 1, # 1 step is equivalent to rec layer being feedforward, with same number of parameters !
-        }
-    
-    medium_rec_peripheral_net_params = {
-        'n_pixels_in': 128,
-        'cnn_n_featuremaps': [64, 64, 64, 32, 32],
-        'cnn_kernel_sizes': [5, 5, 3, 3, 3],
-        'cnn_kernel_strides': [1, 1, 1, 1, 1],
-        'fc_sizes': [256, 256],
-        'rnn_size': 256,
-        'recurrence_type': 'gru',
-        'recurrent_steps': 5, 
-        }
-    
-    medium_rec_foveal_net_params = {
-        'n_pixels_in': 32,
-        'cnn_n_featuremaps': [128, 64, 64],
-        'cnn_kernel_sizes': [5, 5, 3,],
-        'cnn_kernel_strides': [1, 1, 1,],
-        'fc_sizes': [512, 512],
-        'rnn_size': 512,
-        'recurrence_type': 'gru',
-        'recurrent_steps': 5, 
-        }
-    
-    medium_norec_peripheral_net_params = {
+    peripheral_net_params = {
         'n_pixels_in': 128,
         'cnn_n_featuremaps': [64, 64, 64, 32, 32],
         'cnn_kernel_sizes': [5, 5, 3, 3, 3],
@@ -512,7 +473,7 @@ def run_one_seed(seed):
         'recurrent_steps': 1, 
         }
     
-    medium_norec_foveal_net_params = {
+    foveal_net_params = {
         'n_pixels_in': 32,
         'cnn_n_featuremaps': [128, 64, 64],
         'cnn_kernel_sizes': [5, 5, 3,],
@@ -523,167 +484,12 @@ def run_one_seed(seed):
         'recurrent_steps': 1, 
         }
     
-    big_norec_peripheral_net_params = {
-        'n_pixels_in': 128,
-        'cnn_n_featuremaps': [256, 256, 128, 128, 64],
-        'cnn_kernel_sizes': [5, 5, 3, 3, 3],
-        'cnn_kernel_strides': [1, 1, 1, 1, 1],
-        'fc_sizes': [512, 512],
-        'rnn_size': 512,
-        'recurrence_type': 'rnn',
-        'recurrent_steps': 1, # 1 step is equivalent to rec layer being feedforward, with same number of parameters !
-        }
-    
-    big_norec_foveal_net_params = {
-        'n_pixels_in': 32,
-        'cnn_n_featuremaps': [128, 128, 64, 64],
-        'cnn_kernel_sizes': [5, 5, 3, 3],
-        'cnn_kernel_strides': [1, 1, 1,],
-        'fc_sizes': [512, 512],
-        'rnn_size': 512,
-        'recurrence_type': 'rnn',
-        'recurrent_steps': 1, 
-        }
-    
-    big_rec_peripheral_net_params = {
-        'n_pixels_in': 128,
-        'cnn_n_featuremaps': [256, 256, 128, 128, 64],
-        'cnn_kernel_sizes': [5, 5, 3, 3, 3],
-        'cnn_kernel_strides': [1, 1, 1, 1, 1],
-        'fc_sizes': [512, 512],
-        'rnn_size': 512,
-        'recurrence_type': 'gru',
-        'recurrent_steps': 1, # 1 step is equivalent to rec layer being feedforward, with same number of parameters !
-        }
-    
-    big_rec_foveal_net_params = {
-        'n_pixels_in': 32,
-        'cnn_n_featuremaps': [128, 128, 64, 64],
-        'cnn_kernel_sizes': [5, 5, 3, 3],
-        'cnn_kernel_strides': [1, 1, 1,],
-        'fc_sizes': [512, 512],
-        'rnn_size': 512,
-        'recurrence_type': 'gru',
-        'recurrent_steps': 5, 
-        }
-    
-    small_rec_peripheral_net_params = {
-        'n_pixels_in': 128,
-        'cnn_n_featuremaps': [32, 16, 16],
-        'cnn_kernel_sizes': [5, 3, 3, ],
-        'cnn_kernel_strides': [1, 1, 1,],
-        'fc_sizes': [64, 64],
-        'rnn_size': 64,
-        'recurrence_type': 'gru',
-        'recurrent_steps': 5, # 1 step is equivalent to rec layer being feedforward, with same number of parameters !
-        }
-    
-    small_rec_foveal_net_params = {
-        'n_pixels_in': 32,
-        'cnn_n_featuremaps': [32, 32, 32],
-        'cnn_kernel_sizes': [5, 5, 3,],
-        'cnn_kernel_strides': [1, 1, 1,],
-        'fc_sizes': [64, 64],
-        'rnn_size': 64,
-        'recurrence_type': 'gru',
-        'recurrent_steps': 5, # 1 step is equivalent to rec layer being feedforward, with same number of parameters !
-        }
-
-    medium_plus_peripheral_net_params = {
-        'n_pixels_in': 128,
-        'cnn_n_featuremaps': [64, 128, 128, 64, 64],
-        'cnn_kernel_sizes': [5, 5, 3, 3, 3],
-        'cnn_kernel_strides': [1, 1, 1, 1, 1],
-        'fc_sizes': [512, 512, 512],
-        'rnn_size': 512,
-        'recurrence_type': 'rnn',
-        'recurrent_steps': 1, 
-        }
-    
-    medium_plus_foveal_net_params = {
-        'n_pixels_in': 32,
-        'cnn_n_featuremaps': [128, 64, 64],
-        'cnn_kernel_sizes': [5, 5, 3,],
-        'cnn_kernel_strides': [1, 1, 1,],
-        'fc_sizes': [512, 512],
-        'rnn_size': 512,
-        'recurrence_type': 'rnn',
-        'recurrent_steps': 1, 
-        }
-
-    # net_names = ['small_norec', 'small_rec']
-    # peripheral_net_params = [small_no_rec_peripheral_net_params, small_rec_peripheral_net_params]
-    # foveal_net_params = [small_no_rec_foveal_net_params, small_rec_foveal_net_params]
-    # Small no rec is not very good, but still does the job in the end
-
-    # net_names = ['medium_rec', ]
-    # peripheral_net_params = [medium_rec_peripheral_net_params]
-    # foveal_net_params = [medium_rec_foveal_net_params]
-
-    # for net_name, peripheral_net_param, foveal_net_param in zip(net_names, peripheral_net_params, foveal_net_params):
-    #     # for all_envs_start_identical in [True, False]:
-    #     for all_envs_start_identical in [False]:
-    #         modified_args = deepcopy(args)    
-    #         modified_args['agent_params']['peripheral_net_params'] = peripheral_net_param
-    #         modified_args['agent_params']['foveal_net_params'] = foveal_net_param
-    #         modified_args['training_params']['run_name'] = f'{net_name}_envs_identical_{all_envs_start_identical}'
-    #         modified_args['board_params']['all_envs_start_identical'] = all_envs_start_identical
-    #         main(modified_args)
-
-
-
-    # net_names = ['medium_norec', ]
-    # peripheral_net_params = [medium_norec_peripheral_net_params]
-    # foveal_net_params = [medium_norec_foveal_net_params]
-
-    # for net_name, peripheral_net_param, foveal_net_param in zip(net_names, peripheral_net_params, foveal_net_params):
-    #     # for all_envs_start_identical in [True, False]:
-    #     for all_envs_start_identical in [False]:
-    #         modified_args = deepcopy(args)    
-    #         modified_args['agent_params']['peripheral_net_params'] = peripheral_net_param
-    #         modified_args['agent_params']['foveal_net_params'] = foveal_net_param
-    #         modified_args['training_params']['run_name'] = f'{net_name}_envs_identical_{all_envs_start_identical}'
-    #         modified_args['board_params']['all_envs_start_identical'] = all_envs_start_identical
-    #         main(modified_args)
-
-
-    # # MAybe it will reduce the number of edge cases ?
-    # net_names = ['medium_norec_higher_sensitivity']
-    # peripheral_net_params = [medium_norec_peripheral_net_params]
-    # foveal_net_params = [medium_norec_foveal_net_params]
-
-    # for net_name, peripheral_net_param, foveal_net_param in zip(net_names, peripheral_net_params, foveal_net_params):
-    #     # for all_envs_start_identical in [True, False]:
-    #     for all_envs_start_identical in [False]:
-    #         modified_args = deepcopy(args)    
-    #         modified_args['agent_params']['peripheral_net_params'] = peripheral_net_param
-    #         modified_args['agent_params']['foveal_net_params'] = foveal_net_param
-    #         modified_args['training_params']['run_name'] = f'{net_name}_envs_identical_{all_envs_start_identical}'
-    #         modified_args['board_params']['all_envs_start_identical'] = all_envs_start_identical
-    #         modified_args['board_params']['ordering_sensitivity'] = 3 
-    #         main(modified_args)
-
-
-    # Does not make any meaningful difference
-    # Did not actually run.....
-    # net_names = ['big_norec', 'big_rec']
-    # peripheral_net_params = [big_norec_peripheral_net_params, big_rec_peripheral_net_params]
-    # foveal_net_params = [big_norec_foveal_net_params, big_rec_foveal_net_params]
-
-    # for net_name, peripheral_net_param, foveal_net_param in zip(net_names, peripheral_net_params, foveal_net_params):
-    #     # for all_envs_start_identical in [True, False]:
-    #     for all_envs_start_identical in [False]:
-    #         modified_args = deepcopy(args)    
-    #         modified_args['agent_params']['peripheral_net_params'] = peripheral_net_param
-    #         modified_args['agent_params']['foveal_net_params'] = foveal_net_param
-    #         modified_args['training_params']['run_name'] = f'{net_name}_envs_identical_{all_envs_start_identical}'
-    #         modified_args['board_params']['all_envs_start_identical'] = all_envs_start_identical
-    #         main(modified_args)
+ 
 
     # MAybe it will reduce the number of edge cases ?
-    net_names = ['medium_plus_higher_sensitivity']
-    peripheral_net_params = [medium_plus_peripheral_net_params]
-    foveal_net_params = [medium_plus_foveal_net_params]
+    net_names = ['default']
+    peripheral_net_params = [peripheral_net_params]
+    foveal_net_params = [foveal_net_params]
 
     for net_name, peripheral_net_param, foveal_net_param in zip(net_names, peripheral_net_params, foveal_net_params):
         # for all_envs_start_identical in [True, False]:
@@ -691,9 +497,10 @@ def run_one_seed(seed):
             modified_args = deepcopy(args)    
             modified_args['agent_params']['peripheral_net_params'] = peripheral_net_param
             modified_args['agent_params']['foveal_net_params'] = foveal_net_param
-            modified_args['training_params']['run_name'] = f'{net_name}_envs_identical_{all_envs_start_identical}'
+            # modified_args['training_params']['run_name'] = f'{net_name}_envs_identical_{all_envs_start_identical}'
+            modified_args['run_name'] = f'{net_name}_envs_identical_{all_envs_start_identical}'
             modified_args['board_params']['all_envs_start_identical'] = all_envs_start_identical
-            main(modified_args)
+            train(modified_args)
 
 
 if __name__ == "__main__":

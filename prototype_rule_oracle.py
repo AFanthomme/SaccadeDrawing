@@ -1,6 +1,6 @@
 import numpy as np
 
-class Oracle:
+class RuleOracle:
     # Works on batched environments
     def __init__(self, sensitivity=.1, noise=.02, seed=777):
         self.sensitivity = sensitivity
@@ -33,7 +33,17 @@ class Oracle:
                 continue
             else:
                 # This returns the first index that has "done = 0" (done is 0 or 1, so min is 0 = not done) 
-                next_symbol_idx = np.argmin(envs.symbols_done[env_idx])
+
+                if envs.rules[env_idx] != 'closest':
+                    next_symbol_idx = np.argmin(envs.symbols_done[env_idx])
+                else:
+                    dists = []
+                    for symbol_idx in range(envs.n_symbols[env_idx]):
+                        if envs.symbols_done[env_idx, symbol_idx] == 0:
+                            dists.append(np.linalg.norm(envs.barycenters[env_idx, symbol_idx] - positions[env_idx]))
+                        else:
+                            dists.append(np.inf)
+                    next_symbol_idx = np.argmin(dists)
 
                 # Careful, need to convert to [-1, 1] range
                 barycenter = envs.barycenters[env_idx, next_symbol_idx]
@@ -75,24 +85,25 @@ class Oracle:
  
 if __name__ == '__main__':
     import os
-    from env import Boards
+    from prototype_rule_env import RuleBoards
     import matplotlib.pyplot as plt
-    savepath = 'out/oracle_tests'
+    savepath = 'out/rule_oracle_tests'
     os.makedirs(savepath, exist_ok=True)
 
     board_params = {
-        'n_envs': 64,
+        'n_envs': 12,
         'n_symbols_min': 4,
         'n_symbols_max': 8,
         'reward_type': 'default',
-        'reward_params': {'overlap_criterion': .4},
+        'reward_params':  {'overlap_criterion': .4},
         'all_envs_start_identical': False,
-        'timeout': None,
-        
+        'allowed_symbols': ['line_0', 'line_1', 'line_2', 'line_3'],
+        # 'allowed_rules': ['rightward', 'leftward', 'upward', 'downward'],
+        'allowed_rules': ['closest',],
     }
 
-    envs = Boards(board_params, 777)
-    oracle = Oracle(sensitivity=.05, noise=.01, seed=777)
+    envs = RuleBoards(board_params, 777)
+    oracle = RuleOracle(sensitivity=.05, noise=.01, seed=777)
 
     # Test the oracle in an open loop setting
     t_tot = 40
