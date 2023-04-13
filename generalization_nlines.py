@@ -30,12 +30,13 @@ from itertools import product
 from oracle import Oracle
 import os
 
+# Technical bother with local vs cluster paths, best solution i could find...
 # wdir = '/scratch/atf6569/saccade_drawing/'
 wdir = '/home/arnaud/Scratch/saccade_drawing/'
 
 
 
-ROOT_OUTPUT_FOLDER = wdir + 'generalization_n_lines/'
+ROOT_OUTPUT_FOLDER = wdir + 'generalization_n_lines/'   
 # ROOT_OUTPUT_FOLDER = wdir + 'generalization_n_lines_no_ambiguous_orderings/'
 
 
@@ -52,6 +53,7 @@ one_to_four_args = {
             'ordering_sensitivity': 0, # in pixels
             'all_envs_start_identical': False, 
             'timeout': None,
+            'mirror': False,
         },
 
         'oracle_params': {
@@ -60,6 +62,7 @@ one_to_four_args = {
         },
 
         'agent_params': {
+            'fovea_ablated': False,
             'peripheral_net_params': {
                 'n_pixels_in': 128,
                 'cnn_n_featuremaps': [64, 64, 64, 32, 32],
@@ -111,16 +114,36 @@ four_lines_args['board_params']['n_symbols_min'] = 4
 four_lines_args['board_params']['n_symbols_max'] = 4
 four_lines_args['run_name'] = 'only_four'
 
+# Those are not used for training, hence don't need run names but pu them just in case
+five_to_six_args = deepcopy(four_lines_args)
+five_to_six_args['board_params']['n_symbols_min'] = 5
+five_to_six_args['board_params']['n_symbols_max'] = 6
+five_to_six_args['board_params']['timeout'] = 15 # Just in case we can recover; helps, but we fail so rarely it's not very relevant 
+five_to_six_args['run_name'] = 'five_to_six'
+
+mirrored_one_to_six_args = deepcopy(five_to_six_args)
+mirrored_one_to_six_args['board_params']['mirror'] = True
+mirrored_one_to_six_args['n_symbols_min'] = 1
+mirrored_one_to_six_args['run_name'] = 'mirrored_one_to_six'
+
 def run_one_seed_training(seed):
     local_one_to_four_args = deepcopy(one_to_four_args)
-    local_four_lines_args = deepcopy(four_lines_args)
     local_one_to_four_args['seed'] = seed
-    local_four_lines_args['seed'] = seed
-    
-    # Train two models: one on 1-4 symbols, one on 4 symbols only
-    train(local_four_lines_args)
-    train(local_one_to_four_args)
 
+    local_four_lines_args = deepcopy(four_lines_args)
+    local_four_lines_args['seed'] = seed
+
+    local_four_lines_ablated_args = deepcopy(four_lines_args)
+    local_four_lines_ablated_args['agent_params']['fovea_ablated'] = True
+    local_four_lines_ablated_args['seed'] = seed
+    local_four_lines_ablated_args['run_name'] = 'ablated_four_only'
+
+
+
+    # Train two models: one on 1-4 symbols, one on 4 symbols only
+    # train(local_four_lines_args)
+    # train(local_one_to_four_args)
+    train(local_four_lines_ablated_args) # When working with ablated net, train makes sure to use the correct loss (ie no saccade loss, saccade system is trained to give directly exact action !)
 
 def test_suite(agent, envs, savepath, oracle, n_steps_plot=100, n_steps_total=1000):
     os.makedirs(savepath, exist_ok=True)
@@ -141,6 +164,11 @@ def test_suite(agent, envs, savepath, oracle, n_steps_plot=100, n_steps_total=10
     times = []
     n_lines = []
 
+    # Add some behavioral metrics (namely, tpr and tnr at timeout, since it holds all relevant information)
+    tprs = []
+    tnrs = []
+    reciprocal_overlaps = []
+
     for step in range(0, n_steps_total):
         times_step = envs.times.copy()
         # print(times_step.min(), times_step.max())
@@ -160,9 +188,8 @@ def test_suite(agent, envs, savepath, oracle, n_steps_plot=100, n_steps_total=10
 
         test_action = test_saccades + test_homings
 
+        # Plots that should happen before the step
         if step < n_steps_plot:
-            # print('theory', envs.n_symbols_min, envs.n_symbols_max)
-            # print('practice', envs.n_symbols.min(), envs.n_symbols.max())
             for env_idx in range(5):
                 fig, axes = plt.subplots(1, 2, figsize=(32, 16))
                 axes[0].imshow(test_obs[env_idx].transpose(2, 1, 0), origin='lower', extent=[-1, 1, -1, 1])
@@ -181,9 +208,18 @@ def test_suite(agent, envs, savepath, oracle, n_steps_plot=100, n_steps_total=10
                 fig.savefig(savepath + f'traj_{env_idx}_step_{step}.png')
                 plt.close(fig)
 
-            test_obs, _, test_done, _, test_info = envs.step(test_action, test_done)
-            test_obs = test_obs.transpose(0, 3, 1, 2)
+        # The step itself  
+        test_obs, _, test_done, _, test_info = envs.step(test_action, test_done)
+        test_obs = test_obs.transpose(0, 3, 1, 2)
 
+        for env_idx in range(envs.n_envs):
+            if test_done[env_idx]:
+                tprs.append(test_info[env_idx]['tpr'])
+                tnrs.append(test_info[env_idx]['tnr'])
+                reciprocal_overlaps.append(test_info[env_idx]['reciprocal_overlap'])
+
+        # Plots that should happen after the step, only if done
+        if step < n_steps_plot:
             for env_idx in range(5):
                 if test_done[env_idx]:
                     fig, axes = plt.subplots(1, 2, figsize=(32, 16))
@@ -217,6 +253,9 @@ def test_suite(agent, envs, savepath, oracle, n_steps_plot=100, n_steps_total=10
     times = np.array(times).flatten()
     n_lines = np.array(n_lines).flatten()
 
+    tprs = np.array(tprs)
+    tnrs = np.array(tnrs)
+    reciprocal_overlaps = np.array(reciprocal_overlaps)
 
     # Save the errors for aggregation
     np.save(savepath + f'errors_homing.npy', errors_homing)
@@ -225,6 +264,9 @@ def test_suite(agent, envs, savepath, oracle, n_steps_plot=100, n_steps_total=10
     np.save(savepath + f'magnitude_homings.npy', magnitude_homings)
     np.save(savepath + f'times.npy', times)
     np.save(savepath + f'n_lines.npy', n_lines)
+    np.save(savepath + f'tprs.npy', tprs)
+    np.save(savepath + f'tnrs.npy', tnrs)
+    np.save(savepath + f'reciprocal_overlaps.npy', reciprocal_overlaps)
 
 
     fig, axes = plt.subplots(2, 2, figsize=(20, 10))
@@ -252,60 +294,67 @@ def test_suite(agent, envs, savepath, oracle, n_steps_plot=100, n_steps_total=10
     fig.tight_layout()
     fig.savefig(savepath + f"errors_log_histogram.png")
 
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    # How much os the lines is covered by the drawing (truly between 0 and 1)
+    axes[0].hist(tprs, bins=50, range=[0,1], label=f'Min {tprs.min():.2f}; Max {tprs.max():.2f}, std {tprs.std():.2f}')
+    axes[0].set_xlim([-0.05, 1.05])
+    axes[0].legend()
+    axes[0].set_title('Final TPR histogram')
+
+    # How much coloring was done outside the lines (a priori between 0 and 1, but very close to 0 so allow scale change)
+    axes[1].hist(1.-tnrs, bins=50, label=f'Min {(1.-tnrs).min():.2f}; Max {(1.- tnrs).max():.2f}, std {tnrs.std():.2f}')
+    axes[1].set_title('Final FNR histogram')
+    axes[1].legend()
+
+    # This one is also between 0 and 1, but does not really define an "order" (because of how it's calculated, there could be local optima)
+    # In practice, along with the other two metrics, it's a good indicator of how well the model is doing
+    axes[2].hist(reciprocal_overlaps, bins=50, range=[0,1], label=f'Min {reciprocal_overlaps.min():.2f}; Max {reciprocal_overlaps.max():.2f}, std {reciprocal_overlaps.std():.2f}')
+    axes[2].set_xlim([-0.05, 1.05])
+    axes[2].set_title('Reciprocal overlap histogram')
+    axes[2].legend()
+
+    fig.tight_layout()
+    fig.savefig(savepath + f"tpr_tnr_histogram.png")
+
     
     df = pd.DataFrame({'times': times.astype(int), 'errors_homing': errors_homing, 'log_errors_homing': np.log(errors_homing), 'errors_saccade': errors_saccade, 'log_errors_saccade': np.log(errors_saccade),
                         'magnitude_saccades': magnitude_saccades, 'log_magnitude_saccades': np.log(magnitude_saccades), 'magnitude_homings': magnitude_homings, 'log_magnitude_homings': np.log(magnitude_homings), 'n_lines': n_lines.astype(int)})
     
     try:
-        # print(magnitude_saccades.shape, errors_saccade.shape)
         # This one is for understanding the patterns of errors
         fig, axes = plt.subplots(2, 3, figsize=(30, 10))
-        # axes[0,0].scatter(magnitude_saccades, errors_saccade)
-        # sns.scatterplot(x=magnitude_saccades, y=errors_saccade, ax=axes[0,0])
         sns.scatterplot(data=df, x='magnitude_saccades', y='errors_saccade', ax=axes[0,0])
         axes[0,0].set_title('Saccade errors vs magnitude')
         axes[0,0].set_rasterized(True)
 
-        # axes[1,0].scatter(magnitude_homings, errors_homing)
         sns.scatterplot(data=df, x='magnitude_homings', y='errors_homing', ax=axes[1,0])
         axes[1,0].set_title('Homing errors vs magnitude')
         axes[1,0].set_rasterized(True)
 
-
-        # axes[0, 1].scatter(times, errors_saccade)
         sns.violinplot(data=df, x='times', y='log_errors_saccade', ax=axes[0,1])
         axes[0, 1].set_title('Saccade log-errors vs time in trajectory')
         axes[0,1].set_rasterized(True)
 
-
-        # axes[1,1].scatter(times, errors_homing)
-        # print(times.shape, errors_homing.shape)
-        # sys.stdout.flush()
         sns.violinplot(data=df, x='times', y='log_errors_homing', ax=axes[1,1])
         axes[1,1].set_title('Homing log-errors vs time in trajectory')
         axes[1,1].set_rasterized(True)
 
-
-        # axes[0, 2].scatter(n_lines, errors_saccade)
         sns.violinplot(data=df, x='n_lines', y='log_errors_saccade', ax=axes[0,2])
         axes[0, 2].set_title('Saccade log-errors vs number of lines')
         axes[0,2].set_rasterized(True)
 
-
-        # axes[1,2].scatter(n_lines, errors_homing)
         sns.violinplot(data=df, x='n_lines', y='log_errors_homing', ax=axes[1,2])
         axes[1,2].set_title('Homing errors vs number of lines')
         axes[1,2].set_rasterized(True)
-
 
         fig.tight_layout()
         fig.savefig(savepath + f"patterns_of_errors.pdf")
     except:
         raise RuntimeError('Error plotting patterns of errors')
 
-    # raise RuntimeError
+    # No memory leaks on my watch !    
+    plt.close('all')
 
-#  test_suite(agent, envs, savepath, oracle, n_steps_plot=100, n_steps_total=1000):
 
 def run_one_seed_testing(seed, n_steps_plot=10, n_steps_total=100):
     # Do the network frankensteining / testing
@@ -315,50 +364,28 @@ def run_one_seed_testing(seed, n_steps_plot=10, n_steps_total=100):
     one_to_four_agent = SaccadeAgent(one_to_four_args['agent_params']['peripheral_net_params'], one_to_four_args['agent_params']['foveal_net_params'])
     one_to_four_agent.load_state_dict(tch.load(ROOT_OUTPUT_FOLDER + f'four_or_less/seed{seed}/final_agent.pt'))
 
+    # ablated_four_agent = SaccadeAgent(four_lines_args['agent_params']['peripheral_net_params'], four_lines_args['agent_params']['foveal_net_params'])
+    # ablated_four_agent.load_state_dict(tch.load(ROOT_OUTPUT_FOLDER + f'only_four/seed{seed}/final_agent.pt'))
+
     # This is just a sanity check to ensure we are not using the same network for frankensteining, which would not be very interesting
     assert not tch.allclose(four_lines_agent.peripheral_net.convnet[0].weight, one_to_four_agent.peripheral_net.convnet[0].weight)
 
-    four_lines_env = Boards(four_lines_args['board_params'])
     one_to_four_env = Boards(one_to_four_args['board_params'])
-    five_to_six_args = deepcopy(four_lines_args)
-    five_to_six_args['board_params']['n_symbols_min'] = 5
-    five_to_six_args['board_params']['n_symbols_max'] = 6
-    five_to_six_args['board_params']['timeout'] = 25
-
     five_to_six_env = Boards(five_to_six_args['board_params'])
+    mirrored_one_to_six_env = Boards(mirrored_one_to_six_args['board_params'])
+    only_four_env = Boards(four_lines_args['board_params'])
+    
 
-    # print(four_lines_args['board_params'])
-    # print(four_lines_env.n_symbols_min, four_lines_env.n_symbols_max)
-    # print(one_to_four_args['board_params'])
-    # print(one_to_four_env.n_symbols_min, one_to_four_env.n_symbols_max) 
-    # raise RuntimeError
+    oracle = Oracle(**four_lines_args['oracle_params']) # Oracle does not care for number of lines, it reads it from the environment
 
-    oracle = Oracle(**four_lines_args['oracle_params'])
+    # for name, agent in zip(['four_or_less', 'only_four', 'ablated_four_only'], [one_to_four_agent, four_lines_agent, ablated_four_agent]):
+    for name, agent in zip(['four_or_less', 'only_four'], [one_to_four_agent, four_lines_agent]):
+        print(f'Working on agent {name}')
+        test_suite(agent, only_four_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__only_four/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
+        test_suite(agent, one_to_four_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__four_or_less/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
+        test_suite(agent, five_to_six_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__five_to_six/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
+        test_suite(agent, mirrored_one_to_six_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__mirrored_one_to_six/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
 
-    for combo_parts in product(['one_four', 'four_only'], ['one_four', 'four_only']):
-        agent = SaccadeAgent(four_lines_args['agent_params']['peripheral_net_params'], four_lines_args['agent_params']['foveal_net_params'])
-        periph_part, fovea_part = combo_parts
-        if periph_part == 'one_four':
-            agent.peripheral_net.load_state_dict(one_to_four_agent.peripheral_net.state_dict())
-        elif periph_part == 'four_only':
-            agent.peripheral_net.load_state_dict(four_lines_agent.peripheral_net.state_dict())
-        
-        if fovea_part == 'one_four':
-            agent.foveal_net.load_state_dict(one_to_four_agent.foveal_net.state_dict())
-        elif periph_part == 'four_only':
-            agent.foveal_net.load_state_dict(four_lines_agent.foveal_net.state_dict())
-        
-        name = f'peripheral_{periph_part}____foveal_{fovea_part}'
-
-        print(f'Working on combo {name}')
-        test_suite(agent, five_to_six_env, ROOT_OUTPUT_FOLDER + 'frankenstein_tests/' + f'{name}__env__five_to_six/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
-        # test_suite(agent, one_to_four_env, ROOT_OUTPUT_FOLDER + 'frankenstein_tests/' + f'{name}__env__four_or_less/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
-        # test_suite(agent, four_lines_env, ROOT_OUTPUT_FOLDER + 'frankenstein_tests/' + f'{name}__env__only_four/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
-
-
-def aggregate_results():
-    # Read the errors from the files and make stacked histograms
-    pass
 
 
 if __name__ == '__main__':
@@ -372,4 +399,5 @@ if __name__ == '__main__':
     # pool.map(run_one_seed_training, range(n))
 
     for i in range(n):
-        run_one_seed_testing(i, n_steps_plot=50, n_steps_total=500)
+        # run_one_seed_testing(i, n_steps_plot=5, n_steps_total=50)
+        run_one_seed_testing(i, n_steps_plot=50, n_steps_total=5000)

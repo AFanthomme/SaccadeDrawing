@@ -85,7 +85,7 @@ class RuleOracle:
  
 if __name__ == '__main__':
     import os
-    from prototype_rule_env import RuleBoards
+    from prototypes.prototype_rule_env import RuleBoards
     import matplotlib.pyplot as plt
     savepath = 'out/rule_oracle_tests'
     os.makedirs(savepath, exist_ok=True)

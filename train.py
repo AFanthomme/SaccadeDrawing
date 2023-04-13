@@ -48,7 +48,7 @@ def train(args):
     tmp['all_envs_start_identical'] = False
     test_envs = Boards(tmp)
     oracle = Oracle(**args.oracle_params)
-    agent = SaccadeAgent(args.agent_params['peripheral_net_params'], args.agent_params['foveal_net_params'])
+    agent = SaccadeAgent(args.agent_params['peripheral_net_params'], args.agent_params['foveal_net_params'], fovea_ablated=args.agent_params['fovea_ablated'])
     buffer = Buffer(args.buffer_params['buffer_size'])
     foveal_optimizer = tch.optim.Adam(agent.foveal_net.parameters(), lr=args.training_params['lr'])
     peripheral_optimizer = tch.optim.Adam(agent.peripheral_net.parameters(), lr=args.training_params['lr'])
@@ -243,15 +243,19 @@ def train(args):
 
             target_actions = batch['oracle_actions']
             target_saccades = batch['oracle_saccades']
-            # target_homings = target_actions 
-            # target_homings[:, :2] = target_homings[:, :2] - target_saccades
+
 
             pred_saccades, pred_homings = agent(peripheral_obs, fovea_obs)
-            pred_actions = pred_saccades + pred_homings
+            
 
-            saccade_loss = tch.nn.functional.mse_loss(pred_saccades, tch.cat([target_saccades, tch.zeros((pred_saccades.shape[0], 1), dtype=tch.float, device=agent.device)], dim=1), reduction='none')
-            # homing_loss = tch.nn.functional.mse_loss(pred_homings, target_homings, reduction='none')
-            homing_loss = tch.nn.functional.mse_loss(pred_actions, target_actions, reduction='none')
+            if args.agent_params['fovea_ablated']:
+                pred_actions = pred_saccades
+                saccade_loss = tch.nn.functional.mse_loss(pred_actions, target_actions, reduction='none')
+                homing_loss = tch.zeros_like(saccade_loss)
+            else:
+                pred_actions = pred_saccades + pred_homings
+                saccade_loss = tch.nn.functional.mse_loss(pred_saccades, tch.cat([target_saccades, tch.zeros((pred_saccades.shape[0], 1), dtype=tch.float, device=agent.device)], dim=1), reduction='none')
+                homing_loss = tch.nn.functional.mse_loss(pred_actions, target_actions, reduction='none')
 
             saccade_losses_buffer.extend(saccade_loss.detach().cpu().numpy())
             homing_losses_buffer.extend(homing_loss.detach().cpu().numpy())
@@ -260,9 +264,10 @@ def train(args):
             homing_loss = tch.mean(homing_loss)
 
             # Backpropagate
-            foveal_optimizer.zero_grad()
-            homing_loss.backward(retain_graph=True)
-            foveal_optimizer.step()
+            if not args.agent_params['fovea_ablated']:
+                foveal_optimizer.zero_grad()
+                homing_loss.backward(retain_graph=True)
+                foveal_optimizer.step()
 
             peripheral_optimizer.zero_grad()
             saccade_loss.backward()
@@ -294,12 +299,18 @@ def train(args):
             fig, axes = plt.subplots(2, 2, figsize=(20, 10))
             axes[0,0].hist(saccade_losses_buffer, bins=100, log=True)
             axes[0,0].set_title('Saccade errors histogram')
-            axes[0,1].hist(homing_losses_buffer, bins=100, log=True)
-            axes[0,1].set_title('Homing errors histogram')
+            if not args.agent_params['fovea_ablated']:
+                axes[0,1].hist(homing_losses_buffer, bins=100, log=True)
+                axes[0,1].set_title('Homing errors histogram')
+            else:
+                axes[0,1].set_title('Homing undefined for fovea ablated agent')
             axes[1,0].hist(np.log10(saccade_losses_buffer), bins=100, log=True)
             axes[1,0].set_title('Saccade log-errors histogram')
-            axes[1,1].hist(np.log10(homing_losses_buffer), bins=100, log=True)
-            axes[1,1].set_title('Homing log-errors histogram')
+            if not args.agent_params['fovea_ablated']:
+                axes[1,1].hist(np.log10(homing_losses_buffer), bins=100, log=True)
+                axes[1,1].set_title('Homing log-errors histogram')
+            else:
+                axes[1,1].set_title('Homing undefined for fovea ablated agent')
             fig.tight_layout()
             fig.savefig(savepath + f"{update}/errors_histogram.png")
 
@@ -362,8 +373,12 @@ def train(args):
                     axes[0].set_title('Global image')
 
                     # Plot the fovea image and homing submove 
-                    axes[1].imshow(test_fovea_image[env_idx].cpu().numpy().transpose(2, 1, 0), origin='lower', extent=[-1/4, 1/4, -1/4, 1/4])
-                    axes[1].scatter([test_homings[env_idx, 0]], [test_homings[env_idx, 1]], s=4096, color='m', marker='+', label='Homing submove')
+                    if not args.agent_params['fovea_ablated']:
+                        axes[1].imshow(test_fovea_image[env_idx].cpu().numpy().transpose(2, 1, 0), origin='lower', extent=[-1/4, 1/4, -1/4, 1/4])
+                        axes[1].scatter([test_homings[env_idx, 0]], [test_homings[env_idx, 1]], s=4096, color='m', marker='+', label='Homing submove')
+                    else:
+                        axes[1].imshow(np.zeros((64,64,3)), origin='lower', extent=[-1/4, 1/4, -1/4, 1/4])
+
                     axes[1].scatter(0, 0, color='r', marker='.', s=4096, label='Eye pos after saccade')
                     axes[1].legend()
                     axes[1].set_title('Fovea image')
@@ -417,6 +432,7 @@ def run_one_seed(seed):
         },
 
         'agent_params': {
+            'fovea_ablated': False,
             'peripheral_net_params': {
                 'n_pixels_in': 128,
                 'cnn_n_featuremaps': [128, 128, 128, 128, 128],

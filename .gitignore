@@ -2,3 +2,4 @@ out
 *.out
 *.pyc
 scratch
+__pycache__
