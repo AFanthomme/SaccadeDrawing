@@ -29,6 +29,7 @@ from env import Boards
 from itertools import product
 from oracle import Oracle
 import os
+import sys
 
 # Technical bother with local vs cluster paths, best solution i could find...
 # wdir = '/scratch/atf6569/saccade_drawing/'
@@ -36,8 +37,8 @@ wdir = '/home/arnaud/Scratch/saccade_drawing/'
 
 
 
-ROOT_OUTPUT_FOLDER = wdir + 'generalization_n_lines/'   
-# ROOT_OUTPUT_FOLDER = wdir + 'generalization_n_lines_no_ambiguous_orderings/'
+# ROOT_OUTPUT_FOLDER = wdir + 'generalization_n_lines/'   
+ROOT_OUTPUT_FOLDER = wdir + 'generalization_n_lines_no_ambiguous_orderings/'
 
 
 one_to_four_args = {
@@ -93,7 +94,8 @@ one_to_four_args = {
         'training_params': {
             # 'n_updates': 5_000,
             'n_updates': 10_000,
-            'test_every': 500,
+            # 'test_every': 500,
+            'test_every': 1000,
             'lr': 5e-4,
             # 'seed': seed,
             # 'batch_size': 64,
@@ -104,8 +106,21 @@ one_to_four_args = {
             # How many batches / GD steps we do after each rollout phase 
             'gd_steps_per_rollout': 5, # about rollout steps * n_envs / batch_size
             # 'start_agent_only_after': 1_000,
-            'start_agent_only_after': 2_000,
+            # 'start_agent_only_after': 2_000,
+            'start_agent_only_after': 100, # This is kind of a weird crutch, try to get rid of it !
         },
+    }
+
+# When removing the fovea, we lose a lot of units, so for fairness increase the size of the peripheral net !
+big_peripheral_net_params = {
+    'n_pixels_in': 128,
+    'cnn_n_featuremaps': [128, 128, 128, 64, 64],
+    'cnn_kernel_sizes': [5, 5, 3, 3, 3],
+    'cnn_kernel_strides': [1, 1, 1, 1, 1],
+    'fc_sizes': [512, 512],
+    'rnn_size': 512,
+    'recurrence_type': 'rnn',
+    'recurrent_steps': 1, 
     }
 
 
@@ -134,16 +149,31 @@ def run_one_seed_training(seed):
     local_four_lines_args['seed'] = seed
 
     local_four_lines_ablated_args = deepcopy(four_lines_args)
-    local_four_lines_ablated_args['agent_params']['fovea_ablated'] = True
     local_four_lines_ablated_args['seed'] = seed
     local_four_lines_ablated_args['run_name'] = 'ablated_four_only'
+    local_four_lines_ablated_args['agent_params']['fovea_ablated'] = True
 
+    local_ablated_four_or_less_args = deepcopy(one_to_four_args)
+    local_ablated_four_or_less_args['seed'] = seed
+    local_ablated_four_or_less_args['run_name'] = 'ablated_four_or_less'
+    local_ablated_four_or_less_args['agent_params']['fovea_ablated'] = True
 
+    # print('ok', local_four_lines_args['agent_params']['peripheral_net_params'])
+    # sys.stdout.flush()
+
+    local_ablated_four_or_less_big_peripheral_args = deepcopy(one_to_four_args)
+    local_ablated_four_or_less_big_peripheral_args['seed'] = seed
+    local_ablated_four_or_less_big_peripheral_args['agent_params']['fovea_ablated'] = True
+    local_ablated_four_or_less_big_peripheral_args['agent_params']['peripheral_net_params'] = deepcopy(big_peripheral_net_params)
+    local_ablated_four_or_less_big_peripheral_args['run_name'] = 'ablated_four_or_less_big_peripheral'
 
     # Train two models: one on 1-4 symbols, one on 4 symbols only
     # train(local_four_lines_args)
     # train(local_one_to_four_args)
-    train(local_four_lines_ablated_args) # When working with ablated net, train makes sure to use the correct loss (ie no saccade loss, saccade system is trained to give directly exact action !)
+    # train(local_four_lines_ablated_args) # When working with ablated net, train makes sure to use the correct loss (ie no saccade loss, saccade system is trained to give directly exact action !)
+    # train(local_ablated_four_or_less_args)
+    train(local_ablated_four_or_less_big_peripheral_args)
+
 
 def test_suite(agent, envs, savepath, oracle, n_steps_plot=100, n_steps_total=1000):
     os.makedirs(savepath, exist_ok=True)
@@ -190,7 +220,7 @@ def test_suite(agent, envs, savepath, oracle, n_steps_plot=100, n_steps_total=10
 
         # Plots that should happen before the step
         if step < n_steps_plot:
-            for env_idx in range(5):
+            for env_idx in range(2):
                 fig, axes = plt.subplots(1, 2, figsize=(32, 16))
                 axes[0].imshow(test_obs[env_idx].transpose(2, 1, 0), origin='lower', extent=[-1, 1, -1, 1])
                 axes[0].plot([envs.positions[env_idx, 0], envs.positions[env_idx, 0] + test_action[env_idx, 0]], [envs.positions[env_idx, 1], envs.positions[env_idx, 1] + test_action[env_idx, 1]], lw=8, color='gray', label='Total action')
@@ -220,7 +250,7 @@ def test_suite(agent, envs, savepath, oracle, n_steps_plot=100, n_steps_total=10
 
         # Plots that should happen after the step, only if done
         if step < n_steps_plot:
-            for env_idx in range(5):
+            for env_idx in range(2):
                 if test_done[env_idx]:
                     fig, axes = plt.subplots(1, 2, figsize=(32, 16))
                     axes[0].imshow(test_info[env_idx]['terminal_observation'].transpose(1, 0, 2), origin='lower', extent=[-1, 1, -1, 1])
@@ -364,27 +394,27 @@ def run_one_seed_testing(seed, n_steps_plot=10, n_steps_total=100):
     one_to_four_agent = SaccadeAgent(one_to_four_args['agent_params']['peripheral_net_params'], one_to_four_args['agent_params']['foveal_net_params'])
     one_to_four_agent.load_state_dict(tch.load(ROOT_OUTPUT_FOLDER + f'four_or_less/seed{seed}/final_agent.pt'))
 
-    # ablated_four_agent = SaccadeAgent(four_lines_args['agent_params']['peripheral_net_params'], four_lines_args['agent_params']['foveal_net_params'])
-    # ablated_four_agent.load_state_dict(tch.load(ROOT_OUTPUT_FOLDER + f'only_four/seed{seed}/final_agent.pt'))
+    ablated_four_agent = SaccadeAgent(four_lines_args['agent_params']['peripheral_net_params'], four_lines_args['agent_params']['foveal_net_params'])
+    ablated_four_agent.load_state_dict(tch.load(ROOT_OUTPUT_FOLDER + f'ablated_four_only/seed{seed}/final_agent.pt'))
 
     # This is just a sanity check to ensure we are not using the same network for frankensteining, which would not be very interesting
     assert not tch.allclose(four_lines_agent.peripheral_net.convnet[0].weight, one_to_four_agent.peripheral_net.convnet[0].weight)
 
+    only_four_env = Boards(four_lines_args['board_params'])
     one_to_four_env = Boards(one_to_four_args['board_params'])
     five_to_six_env = Boards(five_to_six_args['board_params'])
     mirrored_one_to_six_env = Boards(mirrored_one_to_six_args['board_params'])
-    only_four_env = Boards(four_lines_args['board_params'])
     
 
     oracle = Oracle(**four_lines_args['oracle_params']) # Oracle does not care for number of lines, it reads it from the environment
 
-    # for name, agent in zip(['four_or_less', 'only_four', 'ablated_four_only'], [one_to_four_agent, four_lines_agent, ablated_four_agent]):
-    for name, agent in zip(['four_or_less', 'only_four'], [one_to_four_agent, four_lines_agent]):
+    for name, agent in zip(['four_or_less', 'only_four', 'ablated_four_only'], [one_to_four_agent, four_lines_agent, ablated_four_agent]):
+    # for name, agent in zip(['four_or_less', 'only_four'], [one_to_four_agent, four_lines_agent]):
         print(f'Working on agent {name}')
-        test_suite(agent, only_four_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__only_four/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
-        test_suite(agent, one_to_four_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__four_or_less/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
-        test_suite(agent, five_to_six_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__five_to_six/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
-        test_suite(agent, mirrored_one_to_six_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__mirrored_one_to_six/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
+        test_suite(agent, only_four_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__only_four/{seed}/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
+        test_suite(agent, one_to_four_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__four_or_less/{seed}/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
+        test_suite(agent, five_to_six_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__five_to_six/{seed}/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
+        test_suite(agent, mirrored_one_to_six_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__mirrored_one_to_six/{seed}/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
 
 
 
@@ -400,4 +430,4 @@ if __name__ == '__main__':
 
     for i in range(n):
         # run_one_seed_testing(i, n_steps_plot=5, n_steps_total=50)
-        run_one_seed_testing(i, n_steps_plot=50, n_steps_total=5000)
+        run_one_seed_testing(i, n_steps_plot=25, n_steps_total=5000)

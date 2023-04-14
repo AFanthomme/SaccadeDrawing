@@ -251,7 +251,7 @@ def train(args):
             if args.agent_params['fovea_ablated']:
                 pred_actions = pred_saccades
                 saccade_loss = tch.nn.functional.mse_loss(pred_actions, target_actions, reduction='none')
-                homing_loss = tch.zeros_like(saccade_loss)
+                homing_loss = saccade_loss.detach().clone()
             else:
                 pred_actions = pred_saccades + pred_homings
                 saccade_loss = tch.nn.functional.mse_loss(pred_saccades, tch.cat([target_saccades, tch.zeros((pred_saccades.shape[0], 1), dtype=tch.float, device=agent.device)], dim=1), reduction='none')
