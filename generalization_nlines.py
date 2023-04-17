@@ -34,7 +34,8 @@ import sys
 # Technical bother with local vs cluster paths, best solution i could find...
 # wdir = '/scratch/atf6569/saccade_drawing/'
 # wdir = '/home/arnaud/Scratch/saccade_drawing/'
-wdir = '/scratch/atf6569/saccade_drawing_out/'
+# wdir = '/scratch/atf6569/saccade_drawing_out/'
+wdir = '/home/arnaud/Scratch/saccade_drawing_out/'
 
 
 
@@ -413,6 +414,7 @@ def run_one_seed_testing(seed, n_steps_plot=10, n_steps_total=100):
     ablated_four_or_less_agent.load_state_dict(tch.load(ROOT_OUTPUT_FOLDER + f'ablated_four_or_less/seed{seed}/final_agent.pt'))
 
     ablated_four_or_less_big_peripheral_agent = SaccadeAgent(deepcopy(big_peripheral_net_params), one_to_four_args['agent_params']['foveal_net_params'])
+    ablated_four_or_less_big_peripheral_agent.load_state_dict(tch.load(ROOT_OUTPUT_FOLDER + f'ablated_four_or_less_big_peripheral/seed{seed}/final_agent.pt'))
 
     # This is just a sanity check to ensure we are not using the same network for frankensteining, which would not be very interesting
     assert not tch.allclose(four_lines_agent.peripheral_net.convnet[0].weight, one_to_four_agent.peripheral_net.convnet[0].weight)
@@ -452,4 +454,4 @@ if __name__ == '__main__':
     # pool.map(run_one_seed_training, range(n))
 
     for i in range(n):
-        run_one_seed_testing(i, n_steps_plot=20, n_steps_total=500)
+        run_one_seed_testing(i, n_steps_plot=40, n_steps_total=5000)
