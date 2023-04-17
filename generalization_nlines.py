@@ -33,12 +33,14 @@ import sys
 
 # Technical bother with local vs cluster paths, best solution i could find...
 # wdir = '/scratch/atf6569/saccade_drawing/'
-wdir = '/home/arnaud/Scratch/saccade_drawing/'
+# wdir = '/home/arnaud/Scratch/saccade_drawing/'
+wdir = '/scratch/atf6569/saccade_drawing_out/'
 
 
 
 # ROOT_OUTPUT_FOLDER = wdir + 'generalization_n_lines/'   
-ROOT_OUTPUT_FOLDER = wdir + 'generalization_n_lines_no_ambiguous_orderings/'
+# ROOT_OUTPUT_FOLDER = wdir + 'generalization_n_lines_no_ambiguous_orderings/'
+ROOT_OUTPUT_FOLDER = wdir + 'n_lines_generalization/'
 
 
 one_to_four_args = {
@@ -129,7 +131,7 @@ four_lines_args['board_params']['n_symbols_min'] = 4
 four_lines_args['board_params']['n_symbols_max'] = 4
 four_lines_args['run_name'] = 'only_four'
 
-# Those are not used for training, hence don't need run names but pu them just in case
+# Those are not used for training, hence don't need run names but put them just in case to avoid overwriting
 five_to_six_args = deepcopy(four_lines_args)
 five_to_six_args['board_params']['n_symbols_min'] = 5
 five_to_six_args['board_params']['n_symbols_max'] = 6
@@ -158,21 +160,27 @@ def run_one_seed_training(seed):
     local_ablated_four_or_less_args['run_name'] = 'ablated_four_or_less'
     local_ablated_four_or_less_args['agent_params']['fovea_ablated'] = True
 
-    # print('ok', local_four_lines_args['agent_params']['peripheral_net_params'])
-    # sys.stdout.flush()
-
     local_ablated_four_or_less_big_peripheral_args = deepcopy(one_to_four_args)
     local_ablated_four_or_less_big_peripheral_args['seed'] = seed
     local_ablated_four_or_less_big_peripheral_args['agent_params']['fovea_ablated'] = True
     local_ablated_four_or_less_big_peripheral_args['agent_params']['peripheral_net_params'] = deepcopy(big_peripheral_net_params)
     local_ablated_four_or_less_big_peripheral_args['run_name'] = 'ablated_four_or_less_big_peripheral'
 
+    # Put some more effort on ablated nets as they are our "stat-of-the-art" 
+    # and we want to make sure we give them a fighting chance
+
+
+    # Launched already
+    # train(local_ablated_four_or_less_big_peripheral_args) # Larger AND 1/4 lines should be optimal case 
+    
+    # train(local_ablated_four_or_less_args) # Mostly relevant if above works...
+    # train(local_four_lines_ablated_args) # This one was really trash in initial test, low priority  
+
     # Train two models: one on 1-4 symbols, one on 4 symbols only
-    # train(local_four_lines_args)
-    # train(local_one_to_four_args)
-    # train(local_four_lines_ablated_args) # When working with ablated net, train makes sure to use the correct loss (ie no saccade loss, saccade system is trained to give directly exact action !)
-    # train(local_ablated_four_or_less_args)
-    train(local_ablated_four_or_less_big_peripheral_args)
+    # Launched already
+    train(local_one_to_four_args)
+    train(local_four_lines_args)
+
 
 
 def test_suite(agent, envs, savepath, oracle, n_steps_plot=100, n_steps_total=1000):
@@ -394,8 +402,17 @@ def run_one_seed_testing(seed, n_steps_plot=10, n_steps_total=100):
     one_to_four_agent = SaccadeAgent(one_to_four_args['agent_params']['peripheral_net_params'], one_to_four_args['agent_params']['foveal_net_params'])
     one_to_four_agent.load_state_dict(tch.load(ROOT_OUTPUT_FOLDER + f'four_or_less/seed{seed}/final_agent.pt'))
 
+    local_ablated_four_or_less_args = deepcopy(one_to_four_args)
+    local_ablated_four_or_less_args['seed'] = seed
+    local_ablated_four_or_less_args['run_name'] = 'ablated_four_or_less'
+    local_ablated_four_or_less_args['agent_params']['fovea_ablated'] = True
     ablated_four_agent = SaccadeAgent(four_lines_args['agent_params']['peripheral_net_params'], four_lines_args['agent_params']['foveal_net_params'])
     ablated_four_agent.load_state_dict(tch.load(ROOT_OUTPUT_FOLDER + f'ablated_four_only/seed{seed}/final_agent.pt'))
+
+    ablated_four_or_less_agent = SaccadeAgent(one_to_four_args['agent_params']['peripheral_net_params'], one_to_four_args['agent_params']['foveal_net_params'])
+    ablated_four_or_less_agent.load_state_dict(tch.load(ROOT_OUTPUT_FOLDER + f'ablated_four_or_less/seed{seed}/final_agent.pt'))
+
+    ablated_four_or_less_big_peripheral_agent = SaccadeAgent(deepcopy(big_peripheral_net_params), one_to_four_args['agent_params']['foveal_net_params'])
 
     # This is just a sanity check to ensure we are not using the same network for frankensteining, which would not be very interesting
     assert not tch.allclose(four_lines_agent.peripheral_net.convnet[0].weight, one_to_four_agent.peripheral_net.convnet[0].weight)
@@ -405,10 +422,16 @@ def run_one_seed_testing(seed, n_steps_plot=10, n_steps_total=100):
     five_to_six_env = Boards(five_to_six_args['board_params'])
     mirrored_one_to_six_env = Boards(mirrored_one_to_six_args['board_params'])
     
+    agent_names = ['four_or_less', 'only_four', 'ablated_four_only', 'ablated_four_or_less', 'ablated_four_or_less_big_peripheral']
+    agents = [one_to_four_agent, four_lines_agent, ablated_four_agent, ablated_four_or_less_agent, ablated_four_or_less_big_peripheral_agent]
+
+
+
+    # Put some more effort on ablated nets as they are our "stat-of-the-art" 
 
     oracle = Oracle(**four_lines_args['oracle_params']) # Oracle does not care for number of lines, it reads it from the environment
 
-    for name, agent in zip(['four_or_less', 'only_four', 'ablated_four_only'], [one_to_four_agent, four_lines_agent, ablated_four_agent]):
+    for name, agent in zip(agent_names, agents):
     # for name, agent in zip(['four_or_less', 'only_four'], [one_to_four_agent, four_lines_agent]):
         print(f'Working on agent {name}')
         test_suite(agent, only_four_env, ROOT_OUTPUT_FOLDER + 'results/' + f'{name}__cond__only_four/{seed}/', oracle, n_steps_plot=n_steps_plot, n_steps_total=n_steps_total)
@@ -429,5 +452,4 @@ if __name__ == '__main__':
     # pool.map(run_one_seed_training, range(n))
 
     for i in range(n):
-        # run_one_seed_testing(i, n_steps_plot=5, n_steps_total=50)
-        run_one_seed_testing(i, n_steps_plot=25, n_steps_total=5000)
+        run_one_seed_testing(i, n_steps_plot=20, n_steps_total=500)

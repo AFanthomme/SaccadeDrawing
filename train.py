@@ -82,19 +82,34 @@ def train(args):
             # Info about oracle behavior
             oracle_actions, oracle_submoves = oracle.get_action_and_submoves(envs)
             oracle_saccades = oracle_submoves['saccades']
-            # oracle_homing = oracle_actions - oracle_saccades
-
             transition_dict['oracle_actions'] = oracle_actions.copy()
             transition_dict['oracle_saccades'] = oracle_saccades.copy()
-            
-            # Get the fovea if we follow oracle saccade; should we get fovea after agent saccade 
-            # too ? ==> fovea_after_saccade_oracle / fovea_after_saccade_agent, need it for the 
-            # new loss where homing corrects saccade error
             oracle_pos_after_saccade = (envs.positions + oracle_saccades).copy()
             oracle_pos_after_saccade = np.clip(oracle_pos_after_saccade, -1, 1)
             fovea_image = envs.get_centered_patches(center_pos=oracle_pos_after_saccade)
             fovea_image = [im.transpose(2, 0, 1) for im in fovea_image]
-            # transition_dict['fovea_after_saccade_oracle'] = fovea_image.copy()
+
+            with tch.no_grad():
+                # Get the agent saccade; no need to save it here, will be recomputed in grad_enabled mode
+                saccades = agent.get_saccade(tch.from_numpy(obs).float().to(agent.device)).detach().cpu().numpy()
+                foveas = envs.get_centered_patches(center_pos=envs.positions + saccades[:, :2])
+                foveas = tch.Tensor(np.array([im.transpose(2, 0, 1) for im in foveas])).float().to(agent.device)
+                homings =  agent.get_homing(foveas).detach().cpu().numpy()
+
+                # Saccade does not allow writing on the page, only homing does
+                # If fovea_ablated, it would prevent the agent from writing at all so skip !!!
+                if not args.agent_params['fovea_ablated']:
+                    saccades[:, -1] = 0. 
+                agent_actions = saccades + homings
+            
+            transition_dict['fovea_after_saccade'] = foveas.detach().cpu().numpy().copy()
+
+            #############################################################################
+            #############################################################################
+            #############################################################################
+
+            # TODO: Remove all of this if we can, it's a crutch and makes comparison between models a bit muddy
+            # First try "start_agent_only_after" very small, if it orks cut that completely
 
             # Choose how actions are taken in the environment for the entire rollout
             # 4 possibilities:
@@ -102,23 +117,6 @@ def train(args):
             # - 80% oracle, 20 % agent (25%)
             # - 50% oracle, 50 % agent (15%)
             # - agent + noise (10%)
-
-            with tch.no_grad():
-                # Get the agent saccade; no need to save it here, will be recomputed in grad_enabled mode
-                # later on when we get_batch from buffer. 
-                saccades = agent.get_saccade(tch.from_numpy(obs).float().to(agent.device)).detach().cpu().numpy()
-                foveas = envs.get_centered_patches(center_pos=envs.positions + saccades[:, :2])
-                foveas = tch.Tensor(np.array([im.transpose(2, 0, 1) for im in foveas])).float().to(agent.device)
-                homings =  agent.get_homing(foveas).detach().cpu().numpy()
-
-                # Make something new with homing where it gets the full image, the fovea after saccade, and the value of the saccade? 
-                # correction =  agent.get_correction(obs, foveas, saccades).detach().cpu().numpy()
-
-                # True action in the environment
-                saccades[:, -1] = 0. # Saccade does not allow writing on the page, only homing does
-                agent_actions = saccades + homings
-            
-            transition_dict['fovea_after_saccade'] = foveas.detach().cpu().numpy().copy()
 
             if update >= args.training_params['start_agent_only_after']:
                 actions = agent_actions.copy()
@@ -360,12 +358,10 @@ def train(args):
                 test_fovea_image = tch.Tensor(np.array([im.transpose(2, 0, 1) for im in test_fovea_image])).float().to(agent.device)
                 test_homings = agent.get_homing(test_fovea_image).detach().cpu().numpy()
 
-                # print(test_saccades, test_homings)
                 test_action = test_saccades + test_homings
 
                 for env_idx in range(5):
                     fig, axes = plt.subplots(1, 2, figsize=(32, 16))
-                    # axes[0].imshow(test_obs[env_idx].transpose(1, 0, 2), origin='lower', extent=[-1, 1, -1, 1])
                     axes[0].imshow(test_obs[env_idx].transpose(2, 1, 0), origin='lower', extent=[-1, 1, -1, 1])
                     axes[0].plot([test_envs.positions[env_idx, 0], test_envs.positions[env_idx, 0] + test_action[env_idx, 0]], [test_envs.positions[env_idx, 1], test_envs.positions[env_idx, 1] + test_action[env_idx, 1]], lw=8, color='gray', label='Total action')
                     axes[0].scatter(test_pos_after_saccade[env_idx, 0], test_pos_after_saccade[env_idx, 1], color='m', marker='+', label='Initial saccade')
@@ -423,7 +419,7 @@ def run_one_seed(seed):
             'ordering_sensitivity': 0, # in pixels
             # 'all_envs_start_identical': True, 
             'all_envs_start_identical': False, 
-            # Ensures we see different trjaectories for each realization of lines, will be mixed in buffer so no "single env minibatches"
+            # Ensures we see different trajectories for each realization of lines, will be mixed in buffer so no "single env minibatches"
         },
 
         'oracle_params': {
