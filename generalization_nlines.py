@@ -428,7 +428,6 @@ def run_one_seed_testing(seed, n_steps_plot=10, n_steps_total=100):
     agents = [one_to_four_agent, four_lines_agent, ablated_four_agent, ablated_four_or_less_agent, ablated_four_or_less_big_peripheral_agent]
 
 
-
     # Put some more effort on ablated nets as they are our "stat-of-the-art" 
 
     oracle = Oracle(**four_lines_args['oracle_params']) # Oracle does not care for number of lines, it reads it from the environment
