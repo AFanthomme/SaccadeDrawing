@@ -152,7 +152,7 @@ class RuleBoards:
 
     @staticmethod
     def rule_defined_ordering(rule, b1, b2):
-        # TODO: 'closest' will require something different in Oracle, but in any case it needs full rework for rule so it's ok
+        # NOTE: 'closest' does not really use this ordering so use leftward just for the sake of it
         if rule == 'rightward' or rule == 'closest':
             if b1[0] != b2[0]:
                 return b1[0]-b2[0]

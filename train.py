@@ -50,8 +50,21 @@ def train(args):
     oracle = Oracle(**args.oracle_params)
     agent = SaccadeAgent(args.agent_params['peripheral_net_params'], args.agent_params['foveal_net_params'], fovea_ablated=args.agent_params['fovea_ablated'])
     buffer = Buffer(args.buffer_params['buffer_size'])
-    foveal_optimizer = tch.optim.Adam(agent.foveal_net.parameters(), lr=args.training_params['lr'])
-    peripheral_optimizer = tch.optim.Adam(agent.peripheral_net.parameters(), lr=args.training_params['lr'])
+
+    # Set up optimizers
+    assert not (args.agent_params['no_saccade_loss'] and args.agent_params['fovea_ablated']), 'Cannot ablate fovea and not use saccade loss'
+
+    # Messy, but it works...
+    if not args.agent_params['no_saccade_loss']:
+        peripheral_optimizer = tch.optim.Adam(agent.peripheral_net.parameters(), lr=args.training_params['lr'])
+    else:
+        complete_optimizer = tch.optim.Adam([{'params': agent.peripheral_net.parameters()}, 
+                                               {'params': agent.foveal_net.parameters()}],
+                                               lr=args.training_params['lr'])
+
+    if not args.agent_params['fovea_ablated']:
+        foveal_optimizer = tch.optim.Adam(agent.foveal_net.parameters(), lr=args.training_params['lr'])
+
 
 
     # This comes from buffer.py 
@@ -92,6 +105,7 @@ def train(args):
             with tch.no_grad():
                 # Get the agent saccade; no need to save it here, will be recomputed in grad_enabled mode
                 saccades = agent.get_saccade(tch.from_numpy(obs).float().to(agent.device)).detach().cpu().numpy()
+                # The input to fovea really comes from the agent, that's important
                 foveas = envs.get_centered_patches(center_pos=envs.positions + saccades[:, :2])
                 foveas = tch.Tensor(np.array([im.transpose(2, 0, 1) for im in foveas])).float().to(agent.device)
                 homings =  agent.get_homing(foveas).detach().cpu().numpy()
@@ -118,24 +132,29 @@ def train(args):
             # - 50% oracle, 50 % agent (15%)
             # - agent + noise (10%)
 
+            # if update >= args.training_params['start_agent_only_after']:
+            #    actions = agent_actions.copy()
+            # else:
+            #     if this_rollout_rng < 0.5:
+            #         actions = oracle_actions.copy()
+            #     elif this_rollout_rng < 0.75:
+            #         if np.random.rand() < 0.8:
+            #             actions = oracle_actions.copy()
+            #         else:
+            #             actions = agent_actions.copy()
+            #     elif this_rollout_rng < 0.9:
+            #         if np.random.rand() < 0.5:
+            #             actions = oracle_actions.copy()
+            #         else:
+            #             actions = agent_actions.copy()
+            #     else:
+            #         actions = agent_actions.copy()
+            #         actions += np.random.randn(*actions.shape) * oracle.noise
+
             if update >= args.training_params['start_agent_only_after']:
                 actions = agent_actions.copy()
             else:
-                if this_rollout_rng < 0.5:
-                    actions = oracle_actions.copy()
-                elif this_rollout_rng < 0.75:
-                    if np.random.rand() < 0.8:
-                        actions = oracle_actions.copy()
-                    else:
-                        actions = agent_actions.copy()
-                elif this_rollout_rng < 0.9:
-                    if np.random.rand() < 0.5:
-                        actions = oracle_actions.copy()
-                    else:
-                        actions = agent_actions.copy()
-                else:
-                    actions = agent_actions.copy()
-                    actions += np.random.randn(*actions.shape) * oracle.noise
+                actions = oracle_actions.copy()
 
             next_obs, rewards, dones, _, info = envs.step(actions)
             next_obs = next_obs.transpose(0, 3, 1, 2)
@@ -245,6 +264,12 @@ def train(args):
 
             pred_saccades, pred_homings = agent(peripheral_obs, fovea_obs)
             
+            # TODO: messy, but don't want to risk breaking it right now so keep it until major refactor.
+            # NOTE: we asserted earlier that both 'fovea ablated' an 'no_saccade_loss'were not true at the same time, otherwise no loss at all...
+            # Possible paths through this:
+            # 1. fovea_ablated = False, no_saccade_loss = False: we update both the foveal and the peripheral networks with respective optimizers / losses 
+            # 2. fovea_ablated = False, no_saccade_loss = True: we update both with the homing loss and joint optimizer 
+            # 3. fovea_ablated = True, no_saccade_loss = False: we update only the peripheral network with the saccade loss and its optimizer
 
             if args.agent_params['fovea_ablated']:
                 pred_actions = pred_saccades
@@ -261,15 +286,23 @@ def train(args):
             saccade_loss = tch.mean(saccade_loss)
             homing_loss = tch.mean(homing_loss)
 
-            # Backpropagate
-            if not args.agent_params['fovea_ablated']:
-                foveal_optimizer.zero_grad()
-                homing_loss.backward(retain_graph=True)
-                foveal_optimizer.step()
 
-            peripheral_optimizer.zero_grad()
-            saccade_loss.backward()
-            peripheral_optimizer.step()
+            if not args.agent_params['fovea_ablated']:
+                if not args.agent_params['no_saccade_loss']:
+                    foveal_optimizer.zero_grad()
+                    homing_loss.backward(retain_graph=True)
+                    foveal_optimizer.step()
+                else:
+                    complete_optimizer.zero_grad()
+                    homing_loss.backward(retain_graph=True)
+                    complete_optimizer.step()
+
+            if not args.agent_params['no_saccade_loss']:
+                peripheral_optimizer.zero_grad()
+                saccade_loss.backward()
+                peripheral_optimizer.step()
+
+
             writer.add_scalar('losses/saccade_loss', saccade_loss.item(), global_step=gd_step+ args.training_params['gd_steps_per_rollout'] * update)
             writer.add_scalar('losses/homing_loss', homing_loss.item(), global_step=gd_step+ args.training_params['gd_steps_per_rollout'] * update)
 

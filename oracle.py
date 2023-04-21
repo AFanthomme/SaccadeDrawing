@@ -60,6 +60,8 @@ class Oracle:
                 
         submoves = {
             'saccades': saccades,
+
+            # Not sure those are really used anymore, might want to cut them in next release
             'moves_to_start': moves_to_start,
             'moves_to_end': moves_to_end,
             'homes_to_start': homes_to_start,
@@ -71,7 +73,30 @@ class Oracle:
     def get_action(self, envs):
         actions, _ = self.get_action_and_submoves(envs)
         return actions
+    
+    def get_saccade(self, envs):
+        _, submoves = self.get_action_and_submoves(envs)
+        return submoves['saccades']
  
+class RandomAgent:
+    def __init__(self, amplitude_saccade=.5, amplitude_correction=.1, seed=777, **kwargs) -> None:
+        self.amplitude_saccade = amplitude_saccade
+        self.amplitude_correction = amplitude_correction
+        self.np_random = np.random.RandomState(seed)
+
+    def get_action_and_submoves(self, envs):
+        n_envs = envs.n_envs
+        saccades = self.amplitude_saccade * self.np_random.uniform(-1, 1, size=(n_envs, 3))
+        saccades[:, 2] = 0
+        corrections = self.amplitude_correction * self.np_random.uniform(-1, 1, size=(n_envs, 3))
+
+        submoves = {'saccades': saccades,}
+        actions = saccades + corrections
+        return actions, submoves
+
+    def get_saccade(self, envs):
+        _, submoves = self.get_action_and_submoves(envs)
+        return submoves['saccades']
  
 if __name__ == '__main__':
     import os
