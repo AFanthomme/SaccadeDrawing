@@ -1,5 +1,7 @@
 out
 *.out
+__dep__*
 *.pyc
 scratch
 __pycache__
+# __dep__out

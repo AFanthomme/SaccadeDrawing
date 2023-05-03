@@ -6,6 +6,7 @@ import os
 
 
 class Buffer:
+    # def __init__(self, buffer_size=500, device='cpu'):
     def __init__(self, buffer_size=500, device='cuda'):
         self.buffer_size = buffer_size
         self.buffer_obs = np.zeros((buffer_size, 3, 128, 128), dtype=np.float32)

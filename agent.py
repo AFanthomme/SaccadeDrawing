@@ -7,6 +7,7 @@ class SaccadeAgent(tch.nn.Module):
     def __init__(self, peripheral_net_params, foveal_net_params, fovea_ablated=False) -> None:
         super().__init__()
         self.device = tch.device('cuda')
+        # self.device = tch.device('cpu')
         self.peripheral_net = ConvolutionalRecurrentNetwork(peripheral_net_params)
         self.foveal_net = ConvolutionalRecurrentNetwork(foveal_net_params)
         if fovea_ablated:

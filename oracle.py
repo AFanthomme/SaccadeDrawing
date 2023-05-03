@@ -1,6 +1,7 @@
 import numpy as np
+from copy import deepcopy
 
-class Oracle:
+class RuleOracle:
     # Works on batched environments
     def __init__(self, sensitivity=.1, noise=.02, seed=777):
         self.sensitivity = sensitivity
@@ -33,35 +34,95 @@ class Oracle:
                 continue
             else:
                 # This returns the first index that has "done = 0" (done is 0 or 1, so min is 0 = not done) 
-                next_symbol_idx = np.argmin(envs.symbols_done[env_idx])
 
-                # Careful, need to convert to [-1, 1] range
-                barycenter = envs.barycenters[env_idx, next_symbol_idx]
+                # TODO: Separate closest into closest_barycenter and closest_endpoint? 
+                if envs.rules[env_idx] != 'closest':
+                    next_symbol_idx = np.argmin(envs.symbols_done[env_idx])
+                    # Careful, need to convert to [-1, 1] range
+                    barycenter = envs.barycenters[env_idx, next_symbol_idx]
 
-                # Eye movement to center of next symbol (idea: comes from "peripheral vision" / the whole screen)
-                saccades[env_idx] = barycenter - positions[env_idx] + self.sample_noise()
+                    # Eye movement to center of next symbol (idea: comes from "peripheral vision" / the whole screen)
+                    saccades[env_idx] = barycenter - positions[env_idx] + self.sample_noise()
 
-                # Eye movement directly to next line endpoints 
-                # start_point, end_point = envs.target_endpoints[env_idx, next_symbol_idx, :2] / 64. - 1. , envs.target_endpoints[env_idx, next_symbol_idx, 2:] / 64. - 1.
-                start_point, end_point = envs.target_endpoints[env_idx, next_symbol_idx, :2] , envs.target_endpoints[env_idx, next_symbol_idx, 2:]
-                moves_to_start[env_idx] = start_point - positions[env_idx] + self.sample_noise()
-                moves_to_end[env_idx] = end_point - positions[env_idx] + self.sample_noise()
+                    # Eye movement directly to next line endpoints 
+                    # start_point, end_point = envs.target_endpoints[env_idx, next_symbol_idx, :2] / 64. - 1. , envs.target_endpoints[env_idx, next_symbol_idx, 2:] / 64. - 1.
+                    start_point, end_point = envs.target_endpoints[env_idx, next_symbol_idx, :2] , envs.target_endpoints[env_idx, next_symbol_idx, 2:]
+                    moves_to_start[env_idx] = start_point - positions[env_idx] + self.sample_noise()
+                    moves_to_end[env_idx] = end_point - positions[env_idx] + self.sample_noise()
 
-                # Homing movement (after saccade, that's how you get to the endpoint)
-                homes_to_start[env_idx] = moves_to_start[env_idx] - saccades[env_idx] 
-                homes_to_end[env_idx] = moves_to_end[env_idx] - saccades[env_idx] 
-                
-                if np.linalg.norm(moves_to_start[env_idx]) < self.sensitivity:
-                    # If move to start is smaller than sensitivity, we can directly move to the end point
-                    actions[env_idx] = [moves_to_end[env_idx, 0], moves_to_end[env_idx, 1], .2]
+                    # Homing movement (after saccade, that's how you get to the endpoint)
+                    homes_to_start[env_idx] = moves_to_start[env_idx] - saccades[env_idx] 
+                    homes_to_end[env_idx] = moves_to_end[env_idx] - saccades[env_idx] 
+                    
+                    if np.linalg.norm(moves_to_start[env_idx]) < self.sensitivity:
+                        # If move to start is smaller than sensitivity, we can directly move to the end point
+                        actions[env_idx] = [moves_to_end[env_idx, 0], moves_to_end[env_idx, 1], .2]
+                    else:
+                        # Otherwise, we move to the start point
+                        actions[env_idx] = [moves_to_start[env_idx, 0], moves_to_start[env_idx, 1], -.2]
+                elif envs.rules[env_idx] == 'closest':
+                    # print('In closest branch')
+                    min_dist = np.inf
+                    saccade = np.zeros(2)
+                    move = np.zeros(2)
+                    next_symbol_idx = -1
+                    start_from = None
+                    draw = False
+                    # action = np.concatenate([self.sample_noise(), -0.2*np.ones(1)], axis=0)
+
+                    for symbol_idx in range(envs.n_symbols[env_idx]):
+                        # First, determine what would be the closest ENDPOINT to move to
+                        if envs.symbols_done[env_idx, symbol_idx] == 0:
+                            # print(f'Symbol idx {symbol_idx} is not done')
+                            barycenter = envs.barycenters[env_idx, symbol_idx]
+                            start_point, end_point = envs.target_endpoints[env_idx, symbol_idx, :2] , envs.target_endpoints[env_idx, symbol_idx, 2:]
+                            start_move = start_point - positions[env_idx]
+                            end_move = end_point - positions[env_idx]
+                            # print('start_move', start_move, 'end_move', end_move)
+                            # print('start_move norm', np.linalg.norm(start_move), 'end_move norm', np.linalg.norm(end_move))
+
+                            if np.linalg.norm(start_move) < min_dist:
+                                # print('new best candidate')
+                                min_dist = np.linalg.norm(start_move)
+                                saccade = barycenter - positions[env_idx] 
+                                move = deepcopy(start_move)
+                                next_symbol_idx = symbol_idx
+                                start_from = 'start'
+
+                            if np.linalg.norm(end_move) < min_dist:
+                                # print('new best candidate')
+                                min_dist = np.linalg.norm(end_move)
+                                saccade = barycenter - positions[env_idx] 
+                                move = deepcopy(end_move)
+                                next_symbol_idx = symbol_idx
+                                start_from = 'end'
+                            
+                            # print('min_dist', min_dist, 'next_symbol_idx', next_symbol_idx, 'start_from', start_from)
+                    # Then, see if it is closer than sensitivity, in which case need to change the move
+                    if next_symbol_idx >= 0:
+                        # Ensures we found a line to draw 
+                        if min_dist < self.sensitivity:
+                            # If move to start is smaller than sensitivity, we can directly move to the end point
+                            barycenter = envs.barycenters[env_idx, next_symbol_idx]
+                            start_point, end_point = envs.target_endpoints[env_idx, next_symbol_idx, :2] , envs.target_endpoints[env_idx, next_symbol_idx, 2:]
+                            if start_from == 'start':
+                                move = end_point - positions[env_idx]
+                            elif start_from == 'end':
+                                move = start_point - positions[env_idx]
+                            saccade = barycenter - positions[env_idx] 
+                            draw = True
+                        
+                    # Finally, put this into an action 
+                    move = move + self.sample_noise()
+                    actions[env_idx] = [move[0], move[1], .2*(2.*float(draw)-1)]
+                    saccades[env_idx] = saccade + self.sample_noise()
+                        
                 else:
-                    # Otherwise, we move to the start point
-                    actions[env_idx] = [moves_to_start[env_idx, 0], moves_to_start[env_idx, 1], -.2]
+                    raise ValueError('Unknown rule: {}'.format(envs.rules[env_idx]))
+
                 
         submoves = {
             'saccades': saccades,
-
-            # Not sure those are really used anymore, might want to cut them in next release
             'moves_to_start': moves_to_start,
             'moves_to_end': moves_to_end,
             'homes_to_start': homes_to_start,
@@ -73,7 +134,7 @@ class Oracle:
     def get_action(self, envs):
         actions, _ = self.get_action_and_submoves(envs)
         return actions
-    
+
     def get_saccade(self, envs):
         _, submoves = self.get_action_and_submoves(envs)
         return submoves['saccades']
@@ -100,24 +161,26 @@ class RandomAgent:
  
 if __name__ == '__main__':
     import os
-    from env import Boards
+    from env import RuleBoards
     import matplotlib.pyplot as plt
-    savepath = 'out/oracle_tests'
+    savepath = 'out/rule_oracle_tests'
     os.makedirs(savepath, exist_ok=True)
 
     board_params = {
-        'n_envs': 64,
+        'n_envs': 12,
         'n_symbols_min': 4,
         'n_symbols_max': 8,
         'reward_type': 'default',
-        'reward_params': {'overlap_criterion': .4},
+        'reward_params':  {'overlap_criterion': .4},
         'all_envs_start_identical': False,
+        'allowed_symbols': ['line_0', 'line_1', 'line_2', 'line_3'],
+        # 'allowed_rules': ['rightward', 'leftward', 'upward', 'downward'],
+        'allowed_rules': ['closest'],
         'timeout': None,
-        
+        'mirror': False,
     }
-
-    envs = Boards(board_params, 777)
-    oracle = Oracle(sensitivity=.05, noise=.01, seed=777)
+    envs = RuleBoards(board_params, 777)
+    oracle = RuleOracle(sensitivity=.05, noise=.01, seed=777)
 
     # Test the oracle in an open loop setting
     t_tot = 40

@@ -60,6 +60,7 @@ class ConvolutionalRecurrentNetwork(tch.nn.Module):
         # Build the second fully connected block
         self.out_layer = tch.nn.Linear(self.rnn_size, 3)
         self.device = tch.device('cuda')
+        # self.device = tch.device('cpu')
         self.to(self.device)
         logging.critical(f"Model summary:\n {self}")
 

@@ -1,7 +1,7 @@
 from buffer import Buffer
 from agent import SaccadeAgent
-from oracle import Oracle
-from env import Boards
+from oracle import RuleOracle
+from env import RuleBoards
 
 import torch as tch
 import numpy as np
@@ -43,11 +43,11 @@ def train(args):
     logger.info('Starting training')
 
     # Set up objects
-    envs = Boards(args.board_params)
+    envs = RuleBoards(args.board_params)
     tmp = {k: v for k, v in args.board_params.items()}
     tmp['all_envs_start_identical'] = False
-    test_envs = Boards(tmp)
-    oracle = Oracle(**args.oracle_params)
+    test_envs = RuleBoards(tmp)
+    oracle = RuleOracle(**args.oracle_params)
     agent = SaccadeAgent(args.agent_params['peripheral_net_params'], args.agent_params['foveal_net_params'], fovea_ablated=args.agent_params['fovea_ablated'])
     buffer = Buffer(args.buffer_params['buffer_size'])
 

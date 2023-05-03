@@ -1,6 +1,6 @@
 import numpy as np
 
-class RuleOracle:
+class Oracle:
     # Works on batched environments
     def __init__(self, sensitivity=.1, noise=.02, seed=777):
         self.sensitivity = sensitivity
@@ -33,17 +33,7 @@ class RuleOracle:
                 continue
             else:
                 # This returns the first index that has "done = 0" (done is 0 or 1, so min is 0 = not done) 
-
-                if envs.rules[env_idx] != 'closest':
-                    next_symbol_idx = np.argmin(envs.symbols_done[env_idx])
-                else:
-                    dists = []
-                    for symbol_idx in range(envs.n_symbols[env_idx]):
-                        if envs.symbols_done[env_idx, symbol_idx] == 0:
-                            dists.append(np.linalg.norm(envs.barycenters[env_idx, symbol_idx] - positions[env_idx]))
-                        else:
-                            dists.append(np.inf)
-                    next_symbol_idx = np.argmin(dists)
+                next_symbol_idx = np.argmin(envs.symbols_done[env_idx])
 
                 # Careful, need to convert to [-1, 1] range
                 barycenter = envs.barycenters[env_idx, next_symbol_idx]
@@ -70,6 +60,8 @@ class RuleOracle:
                 
         submoves = {
             'saccades': saccades,
+
+            # Not sure those are really used anymore, might want to cut them in next release
             'moves_to_start': moves_to_start,
             'moves_to_end': moves_to_end,
             'homes_to_start': homes_to_start,
@@ -81,29 +73,51 @@ class RuleOracle:
     def get_action(self, envs):
         actions, _ = self.get_action_and_submoves(envs)
         return actions
+    
+    def get_saccade(self, envs):
+        _, submoves = self.get_action_and_submoves(envs)
+        return submoves['saccades']
  
+class RandomAgent:
+    def __init__(self, amplitude_saccade=.5, amplitude_correction=.1, seed=777, **kwargs) -> None:
+        self.amplitude_saccade = amplitude_saccade
+        self.amplitude_correction = amplitude_correction
+        self.np_random = np.random.RandomState(seed)
+
+    def get_action_and_submoves(self, envs):
+        n_envs = envs.n_envs
+        saccades = self.amplitude_saccade * self.np_random.uniform(-1, 1, size=(n_envs, 3))
+        saccades[:, 2] = 0
+        corrections = self.amplitude_correction * self.np_random.uniform(-1, 1, size=(n_envs, 3))
+
+        submoves = {'saccades': saccades,}
+        actions = saccades + corrections
+        return actions, submoves
+
+    def get_saccade(self, envs):
+        _, submoves = self.get_action_and_submoves(envs)
+        return submoves['saccades']
  
 if __name__ == '__main__':
     import os
-    from prototypes.prototype_rule_env import RuleBoards
+    from env import Boards
     import matplotlib.pyplot as plt
-    savepath = 'out/rule_oracle_tests'
+    savepath = 'out/oracle_tests'
     os.makedirs(savepath, exist_ok=True)
 
     board_params = {
-        'n_envs': 12,
+        'n_envs': 64,
         'n_symbols_min': 4,
         'n_symbols_max': 8,
         'reward_type': 'default',
-        'reward_params':  {'overlap_criterion': .4},
+        'reward_params': {'overlap_criterion': .4},
         'all_envs_start_identical': False,
-        'allowed_symbols': ['line_0', 'line_1', 'line_2', 'line_3'],
-        # 'allowed_rules': ['rightward', 'leftward', 'upward', 'downward'],
-        'allowed_rules': ['closest',],
+        'timeout': None,
+        
     }
 
-    envs = RuleBoards(board_params, 777)
-    oracle = RuleOracle(sensitivity=.05, noise=.01, seed=777)
+    envs = Boards(board_params, 777)
+    oracle = Oracle(sensitivity=.05, noise=.01, seed=777)
 
     # Test the oracle in an open loop setting
     t_tot = 40
