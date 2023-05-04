@@ -40,16 +40,33 @@ def do_comparisons():
         'pink': p_pastel[6],
         }
 
+    # def load_all_seeds_results(template_path, n_seeds=4, out_shape=None):
+    #     # template_path should be something like 'results/oracle__cond__only_four/{}/reciprocal_overlaps.npy'
+    #     all_seeds_results = []
+    #     for seed in range(n_seeds):
+    #         all_seeds_results.append(np.load(template_path.format(seed), allow_pickle=True))
+    #     if out_shape is None:
+    #         all_seeds_results = np.array(all_seeds_results).flatten()
+    #     else:
+    #         all_seeds_results = np.array(all_seeds_results).reshape(out_shape)
+    #     return all_seeds_results
+
     def load_all_seeds_results(template_path, n_seeds=4, out_shape=None):
         # template_path should be something like 'results/oracle__cond__only_four/{}/reciprocal_overlaps.npy'
         all_seeds_results = []
         for seed in range(n_seeds):
             all_seeds_results.append(np.load(template_path.format(seed), allow_pickle=True))
+
+        all_seeds_results = np.array(all_seeds_results)
+
+        print(all_seeds_results.shape)
+
         if out_shape is None:
-            all_seeds_results = np.array(all_seeds_results).flatten()
+            return all_seeds_results.flatten()
+        elif all_seeds_results.shape != out_shape:
+            return np.array(all_seeds_results).reshape(out_shape)
         else:
-            all_seeds_results = np.array(all_seeds_results).reshape(out_shape)
-        return all_seeds_results
+            return all_seeds_results
 
 
     def compare_to_baselines():
@@ -383,8 +400,146 @@ def do_comparisons():
         fig.tight_layout()
         fig.savefig(OUT_DIR + 'results/kde_saccades_comparisons_across_rules_frame_oracle_action.pdf')
 
-    # TODO: add a plot where we look at each direction, but split by line identity (can be inferred from oracle actions)
     # TODO: same, but now all rules together, split by seed (need to tinker with load_all_seeds_results to get the correct shape for that)
+    def saccade_split_by_seed():
+        condition = 'only_four'
+        n_seeds = 4
+        all_rewards = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/cumulated_rewards.npy', out_shape=(n_seeds, -1))
+        all_times = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/times.npy', out_shape=(n_seeds, -1))
+        all_rules = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/rules.npy', out_shape=(n_seeds, -1))
+        all_saccades = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_saccades.npy', out_shape=(n_seeds, -1, 3))
+        all_homings = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_homings.npy', out_shape=(n_seeds, -1, 3))
+        all_actions = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_actions.npy', out_shape=(n_seeds, -1, 3))
+        all_oracle_saccades = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_oracle_saccades.npy', out_shape=(n_seeds, -1, 2))
+        all_oracle_actions = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_oracle_actions.npy', out_shape=(n_seeds, -1, 3))
+
+        
+
+        fig, axes = plt.subplots(1, 2, figsize=(20, 10))
+        axes[0].set_title('Drawing steps (Candidate)')
+        axes[0].set_xlabel('X saccade (drawing steps)')
+        axes[0].set_ylabel('Y saccade (drawing steps)')
+        axes[0].axhline(0, color='black', linestyle='--')
+        axes[0].axvline(0, color='black', linestyle='--')
+        axes[0].set_xlim(-0.25, 0.25)
+        axes[0].set_ylim(-0.25, 0.25)
+
+        axes[1].set_title('Movement steps (Candidate)')
+        axes[1].set_xlabel('X saccade (movement steps, centered on next line)')
+        axes[1].set_ylabel('Y saccade (movement steps, centered on next line)')
+        axes[1].axhline(0, color='black', linestyle='--')
+        axes[1].axvline(0, color='black', linestyle='--')
+        axes[1].set_xlim(-0.35, 0.35)
+        axes[1].set_ylim(-0.35, 0.35)
+
+
+        palette = sns.color_palette("deep", n_colors=n_seeds)
+
+        for seed in range(n_seeds):
+
+            # For this plot, all seeds at once so no care
+            actions = all_actions[seed]
+            saccades = all_saccades[seed]
+            oracle_saccades = all_oracle_saccades[seed]
+
+            is_drawing = (actions[:, 2] >= 0) & (np.random.rand(len(actions)) < .05)
+            is_not_drawing = (actions[:, 2] < 0) & (np.random.rand(len(actions)) < .05)
+
+            data = saccades[is_drawing, :2]  # Saccades in a frame centered around the end of the line (up to some noise)
+            sns.kdeplot(x=data[:, 0], y=data[:, 1], ax=axes[0], color=palette[seed], fill=True, levels=5, alpha=0.75)
+
+            data = saccades[is_not_drawing, :2] - oracle_saccades[is_not_drawing, :2] # Saccades in a frame centered around the end of the line (up to some noise)
+            sns.kdeplot(x=data[:, 0], y=data[:, 1], ax=axes[1], color=palette[seed], fill=True, levels=5, alpha=0.75)
+
+        axes[0].legend(handles=[plt.Line2D([0], [0], color=palette[seed], lw=4, label=f"Seed {seed}, all rules together") for seed in range(n_seeds)], loc='upper left')
+        axes[1].legend(handles=[plt.Line2D([0], [0], color=palette[seed], lw=4, label=f"Seed {seed}, all rules together") for seed in range(n_seeds)], loc='upper left')      
+
+        fig.tight_layout()
+        fig.savefig(OUT_DIR + 'results/saccades_comparison_between_seeds.pdf')
+
+
+        # Same, but first do a 2-means clustering for the drawing steps
+        from sklearn.cluster import KMeans
+
+        fig, axes = plt.subplots(1, 3, figsize=(30, 10))
+        axes[0].set_title('Drawing steps (All cardinal rules)')
+        axes[0].set_xlabel('X saccade (drawing steps)')
+        axes[0].set_ylabel('Y saccade (drawing steps)')
+        axes[0].axhline(0, color='black', linestyle='--')
+        axes[0].axvline(0, color='black', linestyle='--')
+        axes[0].set_xlim(-0.25, 0.25)
+        axes[0].set_ylim(-0.25, 0.25)
+
+
+        axes[1].set_title('Drawing steps (Closest rule)')
+        axes[1].set_xlabel('X saccade (drawing steps)')
+        axes[1].set_ylabel('Y saccade (drawing steps)')
+        axes[1].axhline(0, color='black', linestyle='--')
+        axes[1].axvline(0, color='black', linestyle='--')
+        axes[1].set_xlim(-0.25, 0.25)
+        axes[1].set_ylim(-0.25, 0.25)
+
+        axes[2].set_title('Movement steps (All rules)')
+        axes[2].set_xlabel('X saccade (movement steps, centered on next line)')
+        axes[2].set_ylabel('Y saccade (movement steps, centered on next line)')
+        axes[2].axhline(0, color='black', linestyle='--')
+        axes[2].axvline(0, color='black', linestyle='--')
+        axes[2].set_xlim(-0.35, 0.35)
+        axes[2].set_ylim(-0.35, 0.35)
+
+
+        palette = sns.color_palette("deep", n_colors=n_seeds)
+        cluster_sizes = []
+
+        for seed in range(n_seeds):
+            # For this plot, all seeds at once so no care
+            actions = all_actions[seed]
+            saccades = all_saccades[seed]
+            oracle_saccades = all_oracle_saccades[seed]
+            rules = all_rules[seed]
+
+            is_not_drawing = (actions[:, 2] < 0) & (np.random.rand(len(actions)) < .05)
+
+            # Need more care here than for other plots because we split by rule AFTER the subsampling instead of before.
+            random_selector_draw = np.random.rand(len(actions)) < .05
+            is_drawing = (actions[:, 2] >= 0) & random_selector_draw
+            is_closest_rule = (rules == 'closest') & random_selector_draw
+
+            print(np.mean(rules == 'closest'))
+
+
+            # All cardinal rules
+            data = saccades[is_drawing & ~is_closest_rule, :2]  
+            # model = KMeans(n_clusters=2, n_init='auto')
+            # labels = model.fit_predict(data)
+            # cluster_sizes.append(np.sum(labels==0))
+            # for cluster_id in range(2):
+            sns.kdeplot(x=data[:,0], y=data[:,1], ax=axes[0], color=palette[seed], fill=True, levels=5, alpha=0.75)
+
+            # Further split between closest and other rules
+            data = saccades[is_drawing & is_closest_rule, :2]  
+            model = KMeans(n_clusters=2, n_init='auto')
+            labels = model.fit_predict(data)
+            cluster_sizes.append(int(100*np.round(np.mean(labels==0), 2)))
+            for cluster_id in range(2):
+                sns.kdeplot(x=data[labels==cluster_id, 0], y=data[labels==cluster_id, 1], ax=axes[1], color=palette[seed], fill=True, levels=5, alpha=0.75)
+
+
+            data = saccades[is_not_drawing, :2] - oracle_saccades[is_not_drawing, :2] # Saccades in a frame centered around the end of the line (up to some noise)
+            sns.kdeplot(x=data[:, 0], y=data[:, 1], ax=axes[2], color=palette[seed], fill=True, levels=5, alpha=0.75)
+
+        axes[0].legend(handles=[plt.Line2D([0], [0], color=palette[seed], lw=4, label=f"Seed {seed}, all cardinal rules") for seed in range(n_seeds)], loc='upper left')
+        axes[1].legend(handles=[plt.Line2D([0], [0], color=palette[seed], lw=4, label=f"Seed {seed}, closest rule, clusters are {cs}/{100-cs} \%") for seed, cs in enumerate(cluster_sizes)], loc='upper left')      
+        axes[0].legend(handles=[plt.Line2D([0], [0], color=palette[seed], lw=4, label=f"Seed {seed}, all rules") for seed in range(n_seeds)], loc='upper left')
+
+        fig.tight_layout()
+        fig.savefig(OUT_DIR + 'results/saccades_comparison_between_seeds_with_clustering_for_drawing_steps.pdf')
+
+
+    # TODO: add a plot where we look at each direction, but split by line identity (can be inferred from oracle actions)
+
+
+
 
     # Expectation (based on previous anecdotal observations):
     # Line identity does not matter, seed does !
@@ -397,7 +552,8 @@ def do_comparisons():
     # compare_to_baselines()
     # compare_completion_rate_across_rules()
     # compare_reward_envelopes()
-    compare_saccades_across_rules()
+    # compare_saccades_across_rules()
+    saccade_split_by_seed()
     
 
 

@@ -9,7 +9,8 @@ from itertools import product
 import os
 
 
-wdir = '/scratch/atf6569/saccade_drawing/'
+# wdir = '/scratch/atf6569/saccade_drawing/'
+wdir = '/home/arnaud/Scratch/saccade_drawing/'
 
 
 OUT_DIR = wdir + 'generalization_closest/'   
@@ -73,6 +74,7 @@ def do_comparisons():
         sns.histplot(candidate, ax=ax, label='Candidate', stat='probability', bins=40, color=cdict['green'])
         sns.histplot(candidate_ablated, ax=ax, label='With fovea ablation', stat='probability', bins=40, color=cdict['pink'])
         sns.histplot(candidate_ablated_big, ax=ax, label='With fovea ablation, bigger', stat='probability', bins=40, color=cdict['purple'])
+        sns.histplot(candidate_constrained_saccade, ax=ax, label='Constrained saccades', stat='probability', bins=40, color=cdict['orange'])
         ax.set_xlabel('Reciprocal overlap')
         ax.legend()
 
@@ -231,56 +233,23 @@ def do_comparisons():
         # Do it on 8 lines, very long timeout 
         # For "all_rules", we might want to split rules, check if "closest" has some specificities
         # eg it always completes all lines if you leave it enough time ?
-        random = load_all_seeds_results(OUT_DIR + 'results/random__cond__eight_timeout_thirty/{}/cumulated_rewards.npy')
-        random_times = load_all_seeds_results(OUT_DIR + 'results/random__cond__eight_timeout_thirty/{}/times.npy')
+        random = load_all_seeds_results(OUT_DIR + 'results/random__cond__mirrored_6_timeout_30/{}/cumulated_rewards.npy')
+        random_times = load_all_seeds_results(OUT_DIR + 'results/random__cond__mirrored_6_timeout_30/{}/times.npy')
 
-        oracle = load_all_seeds_results(OUT_DIR + 'results/oracle__cond__eight_timeout_thirty/{}/cumulated_rewards.npy')
-        oracle_times = load_all_seeds_results(OUT_DIR + 'results/oracle__cond__eight_timeout_thirty/{}/times.npy')
+        oracle = load_all_seeds_results(OUT_DIR + 'results/oracle__cond__mirrored_6_timeout_30/{}/cumulated_rewards.npy')
+        oracle_times = load_all_seeds_results(OUT_DIR + 'results/oracle__cond__mirrored_6_timeout_30/{}/times.npy')
 
-        candidate = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__eight_timeout_thirty/{}/cumulated_rewards.npy')
-        candidate_times = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__eight_timeout_thirty/{}/times.npy')
+        candidate = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__mirrored_6_timeout_30/{}/cumulated_rewards.npy')
+        candidate_times = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__mirrored_6_timeout_30/{}/times.npy')
 
-        candidate_ablated_big = load_all_seeds_results(OUT_DIR + 'results/big_ablated__cond__eight_timeout_thirty/{}/cumulated_rewards.npy')
-        candidate_ablated_big_times = load_all_seeds_results(OUT_DIR + 'results/big_ablated__cond__eight_timeout_thirty/{}/times.npy')
+        candidate_ablated_big = load_all_seeds_results(OUT_DIR + 'results/big_ablated__cond__mirrored_6_timeout_30/{}/cumulated_rewards.npy')
+        candidate_ablated_big_times = load_all_seeds_results(OUT_DIR + 'results/big_ablated__cond__mirrored_6_timeout_30/{}/times.npy')
 
-        candidate_constrained_saccade = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__eight_timeout_thirty/{}/cumulated_rewards.npy')
-        candidate_constrained_saccade_times = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__eight_timeout_thirty/{}/times.npy')
+        candidate_constrained_saccade = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__mirrored_6_timeout_30/{}/cumulated_rewards.npy')
+        candidate_constrained_saccade_times = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__mirrored_6_timeout_30/{}/times.npy')
 
-        candidate_ablated_small = load_all_seeds_results(OUT_DIR + 'results/ablated__cond__eight_timeout_thirty/{}/cumulated_rewards.npy')
-        candidate_ablated_small_times = load_all_seeds_results(OUT_DIR + 'results/ablated__cond__eight_timeout_thirty/{}/times.npy')
-
-        # This will work on rows of the final figure, one per condition we want to look at
-        # Two columns: one with new-wave histogram 
-        # def custom_time_varying_histogram(name, data, times, axes, color_strong, color_weak):
-        #     # Two different colors needed to make the filled area readable
-        #     # Easy to get from the seaborn colormaps
-        #     assert len(axes) == 2 
-        #     unique_times = np.unique(times) 
-        #     assert np.all(unique_times == np.arange(0, 30))
-        #     assert max(data) <= 8 # 8 lines, so should get at most 8 rewards in a trajectory
-        #     means, stds = [], []
-
-        #     for t in unique_times:
-        #         print(data.shape, times.shape)
-        #         filtered_data = data[times == t]
-        #         counts = [np.sum(filtered_data == i) for i in range(9)]
-        #         probs = np.array(counts) / np.sum(counts)
-        #         for i, p in enumerate(probs):
-        #             # .95 to avoid overlapping lines, not very important
-        #             axes[0].plot([t-.95*p/2, t + .95* p/2], [i, i], color=color_strong)
-        #         means.append(np.mean(filtered_data))
-        #         stds.append(np.std(filtered_data))
-        #     axes[0].set_xlabel('Time (steps)')
-        #     axes[0].set_ylabel('Number of lines completed')
-        #     axes[0].set_title(f"Using {name} agent")
-
-        #     axes[1].plot(unique_times, means, color=color_strong)
-        #     axes[1].fill_between(unique_times, np.array(means) - np.array(stds), np.array(means) + np.array(stds), color=color_weak, alpha=.3)
-        #     axes[1].set_xlabel('Time (steps)')
-        #     axes[1].set_ylabel('Mean number of lines completed')
-        #     axes[1].set_title(f"Using {name} agent")
-
-        # fig, axes = plt.subplots(5, 2, figsize=(12, 20))
+        candidate_ablated_small = load_all_seeds_results(OUT_DIR + 'results/ablated__cond__mirrored_6_timeout_30/{}/cumulated_rewards.npy')
+        candidate_ablated_small_times = load_all_seeds_results(OUT_DIR + 'results/ablated__cond__mirrored_6_timeout_30/{}/times.npy')
 
         def do_heatmaps(name, data, times, ax, color_strong, color_weak):
             # Two different colors needed to make the filled area readable
@@ -290,12 +259,14 @@ def do_comparisons():
             assert max(data) <= 8 # 8 lines, so should get at most 8 rewards in a trajectory
             means, stds = [], []
 
-            all_counts = np.zeros((30, 9)) # 30 steps, 9 possibilities for cumulated reward
+            n_lines = int(max(data))
+
+            all_counts = np.zeros((30, n_lines+1)) # 30 steps, 9 possibilities for cumulated reward
             
 
             for t in unique_times:
                 filtered_data = data[times == t]
-                counts = np.bincount(filtered_data.astype(int), minlength=9)
+                counts = np.bincount(filtered_data.astype(int), minlength=n_lines+1)
                 all_counts[t] = counts
                 means.append(np.mean(filtered_data))
                 stds.append(np.std(filtered_data))
@@ -303,7 +274,7 @@ def do_comparisons():
             all_counts = all_counts.astype(float)
             probs = all_counts / np.sum(all_counts, axis=1, keepdims=True)
             
-            sns.heatmap(probs.T[::-1, :], yticklabels=range(8, -1, -1), linewidths=.5, annot=True, fmt='.2f', ax=ax)
+            sns.heatmap(probs.T[::-1, :], yticklabels=range(n_lines, -1, -1), linewidths=.5, annot=True, fmt='.2f', ax=ax)
             ax.set_xlabel('Time (steps)')
             ax.set_ylabel('Number of lines completed')
             ax.set_title(f"Using {name} agent")
@@ -317,11 +288,12 @@ def do_comparisons():
             assert max(data) <= 8 # 8 lines, so should get at most 8 rewards in a trajectory
             means, stds = [], []
 
-            all_counts = np.zeros((30, 9)) # 30 steps, 9 possibilities for cumulated reward
+            n_lines = int(max(data))
+            all_counts = np.zeros((30, n_lines+1)) # 30 steps, 9 possibilities for cumulated reward
             
             for t in unique_times:
                 filtered_data = data[times == t]
-                counts = np.bincount(filtered_data.astype(int), minlength=9)
+                counts = np.bincount(filtered_data.astype(int), minlength=n_lines+1)
                 all_counts[t] = counts
                 means.append(np.mean(filtered_data))
                 stds.append(np.std(filtered_data))

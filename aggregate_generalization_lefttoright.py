@@ -50,12 +50,16 @@ def do_comparisons():
     # New version: each plot is a function
     # Summary figure will be done by stitching the results in Inkscape, will allow more control over the layout
 
-    # def load_all_seeds_results(template_path, n_seeds=4):
+
+    # def load_all_seeds_results(template_path, n_seeds=4, out_shape=None):
     #     # template_path should be something like 'results/oracle__cond__only_four/{}/reciprocal_overlaps.npy'
     #     all_seeds_results = []
     #     for seed in range(n_seeds):
     #         all_seeds_results.append(np.load(template_path.format(seed), allow_pickle=True))
-    #     all_seeds_results = np.array(all_seeds_results).flatten()
+    #     if out_shape is None:
+    #         all_seeds_results = np.array(all_seeds_results).flatten()
+    #     else:
+    #         all_seeds_results = np.array(all_seeds_results).reshape(out_shape)
     #     return all_seeds_results
 
     def load_all_seeds_results(template_path, n_seeds=4, out_shape=None):
@@ -63,11 +67,16 @@ def do_comparisons():
         all_seeds_results = []
         for seed in range(n_seeds):
             all_seeds_results.append(np.load(template_path.format(seed), allow_pickle=True))
+
+        all_seeds_results = np.array(all_seeds_results)
+
         if out_shape is None:
-            all_seeds_results = np.array(all_seeds_results).flatten()
+            return all_seeds_results.flatten()
+        elif all_seeds_results.shape != out_shape:
+            return np.array(all_seeds_results).reshape(out_shape)
         else:
-            all_seeds_results = np.array(all_seeds_results).reshape(out_shape)
-        return all_seeds_results
+            return all_seeds_results
+
 
     def compare_on_four_lines():
         # Use the oracle as our reference for "perfection"
@@ -335,19 +344,19 @@ def do_comparisons():
         fig.tight_layout()
         fig.savefig(OUT_DIR + 'results/average_completed_lines_comparisons_to_baselines.pdf')
 
-    def compare_saccades_to_supervised():
+    def compare_saccades_to_supervised(n_seeds=4):
         condition = 'only_four'
 
         loading_dict = {}
 
-        rewards = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/cumulated_rewards.npy')
-        times = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/times.npy')
-        rules = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/rules.npy')
-        saccades = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_saccades.npy', out_shape=(-1, 3))
-        homings = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_homings.npy', out_shape=(-1, 3))
-        actions = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_actions.npy', out_shape=(-1, 3))
-        oracle_saccades = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_oracle_saccades.npy', out_shape=(-1, 2))
-        oracle_actions = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_oracle_actions.npy', out_shape=(-1, 3))
+        rewards = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/cumulated_rewards.npy', out_shape=(n_seeds, -1))
+        times = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/times.npy', out_shape=(n_seeds, -1))
+        rules = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/rules.npy', out_shape=(n_seeds, -1))
+        saccades = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_saccades.npy', out_shape=(n_seeds, -1, 3))
+        homings = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_homings.npy', out_shape=(n_seeds, -1, 3))
+        actions = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_actions.npy', out_shape=(n_seeds, -1, 3))
+        oracle_saccades = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_oracle_saccades.npy', out_shape=(n_seeds, -1, 2))
+        oracle_actions = load_all_seeds_results(OUT_DIR + 'results/candidate__cond__' + condition + '/{}/all_oracle_actions.npy', out_shape=(n_seeds, -1, 3))
 
         loading_dict.update({
             'candidate': {
@@ -362,14 +371,14 @@ def do_comparisons():
             }
             })
 
-        supervised_rewards = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/cumulated_rewards.npy')
-        supervised_times = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/times.npy')
-        supervised_rules = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/rules.npy')
-        supervised_saccades = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/all_saccades.npy', out_shape=(-1, 3))
-        supervised_homings = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/all_homings.npy', out_shape=(-1, 3))
-        supervised_actions = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/all_actions.npy', out_shape=(-1, 3))
-        supervised_oracle_saccades = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/all_oracle_saccades.npy', out_shape=(-1, 2))
-        supervised_oracle_actions = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/all_oracle_actions.npy', out_shape=(-1, 3))
+        supervised_rewards = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/cumulated_rewards.npy', out_shape=(n_seeds, -1))
+        supervised_times = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/times.npy', out_shape=(n_seeds, -1))
+        supervised_rules = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/rules.npy', out_shape=(n_seeds, -1))
+        supervised_saccades = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/all_saccades.npy', out_shape=(n_seeds, -1, 3))
+        supervised_homings = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/all_homings.npy', out_shape=(n_seeds, -1, 3))
+        supervised_actions = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/all_actions.npy', out_shape=(n_seeds, -1, 3))
+        supervised_oracle_saccades = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/all_oracle_saccades.npy', out_shape=(n_seeds, -1, 2))
+        supervised_oracle_actions = load_all_seeds_results(OUT_DIR + 'results/saccade_constrained__cond__' + condition + '/{}/all_oracle_actions.npy', out_shape=(n_seeds, -1, 3))
 
 
         loading_dict.update({
@@ -408,15 +417,23 @@ def do_comparisons():
         for model_idx, model_name, cname in zip(range(2), ['candidate', 'supervised'], ['green', 'orange']):
             # Split between movements where the agent draws, and ones where it does not
             actions = loading_dict[model_name]['actions']
+            saccades = loading_dict[model_name]['saccades']
+            oracle_saccades = loading_dict[model_name]['oracle_saccades']
+
+            # For this plot, all seeds at once so no care
+            actions = actions.reshape(-1, 3)
+            saccades = saccades.reshape(-1, 3)
+            oracle_saccades = oracle_saccades.reshape(-1, 2)
+
             is_drawing = (actions[:, 2] >= 0) 
             is_not_drawing = (actions[:, 2] < 0)
 
-            data = loading_dict[model_name]['saccades'][is_drawing, :2]  # Saccades in a frame centered around the end of the line (up to some noise)
+            data = saccades[is_drawing, :2]  # Saccades in a frame centered around the end of the line (up to some noise)
 
             # sns.kdeplot(x=data[:, 0], y=data[:, 1], ax=axes[0], color=cdict[cname], fill=True)
             axes[0].scatter(data[:, 0], data[:, 1], color=cdict[cname], s=1, alpha=.01, rasterized=True)
         
-            data = loading_dict[model_name]['saccades'][is_not_drawing, :2] - loading_dict[model_name]['oracle_saccades'][is_not_drawing, :2] # Saccades in a frame centered around the end of the line (up to some noise)
+            data = saccades[is_not_drawing, :2] - oracle_saccades[is_not_drawing, :2] # Saccades in a frame centered around the end of the line (up to some noise)
             # sns.kdeplot(x=data[:, 0], y=data[:, 1], ax=axes[1], color=cdict[cname], fill=True)
             axes[1].scatter(data[:, 0], data[:, 1], color=cdict[cname], s=1, alpha=.01, rasterized=True)
 
@@ -446,12 +463,18 @@ def do_comparisons():
         for model_idx, model_name, cname in zip(range(2), ['candidate', 'supervised'], ['green', 'orange']):
             # Split between movements where the agent draws, and ones where it does not
             actions = loading_dict[model_name]['actions']
+            saccades = loading_dict[model_name]['saccades']
+            oracle_saccades = loading_dict[model_name]['oracle_saccades']
+            # For this plot, all seeds at once so no care
+            actions = actions.reshape(-1, 3)
+            saccades = saccades.reshape(-1, 3)
+            oracle_saccades = oracle_saccades.reshape(-1, 2)
             is_drawing = (actions[:, 2] >= 0) & (np.random.rand(len(actions)) < .05)
             is_not_drawing = (actions[:, 2] < 0) & (np.random.rand(len(actions)) < .05)
 
-            data = loading_dict[model_name]['saccades'][is_drawing, :2]  # Saccades in a frame centered around the end of the line (up to some noise)
+            data = saccades[is_drawing, :2]  # Saccades in a frame centered around the end of the line (up to some noise)
             sns.kdeplot(x=data[:, 0], y=data[:, 1], ax=axes[0], color=cdict[cname], fill=True)
-            data = loading_dict[model_name]['saccades'][is_not_drawing, :2] - loading_dict[model_name]['oracle_saccades'][is_not_drawing, :2] # Saccades in a frame centered around the end of the line (up to some noise)
+            data = saccades[is_not_drawing, :2] - oracle_saccades[is_not_drawing, :2] # Saccades in a frame centered around the end of the line (up to some noise)
             sns.kdeplot(x=data[:, 0], y=data[:, 1], ax=axes[1], color=cdict[cname], fill=True)
 
         axes[0].legend(handles=[plt.Line2D([0], [0], color=cdict[cname], lw=4, label=model_name.title()) for cname, model_name in zip(['green', 'orange'], ['Candidate', 'Supervised'])], loc='upper left')
@@ -461,37 +484,68 @@ def do_comparisons():
         fig.savefig(OUT_DIR + 'results/kde_saccades_comparison_vs_constrained.pdf')
 
         # Do one with seeds split
-        
+        fig, axes = plt.subplots(2, 2, figsize=(20, 20))
+        axes[0, 0].set_title('Drawing steps (Candidate)')
+        axes[0, 0].set_xlabel('X saccade (drawing steps)')
+        axes[0, 0].set_ylabel('Y saccade (drawing steps)')
+        axes[0, 0].axhline(0, color='black', linestyle='--')
+        axes[0, 0].axvline(0, color='black', linestyle='--')
+        axes[0, 0].set_xlim(-0.25, 0.25)
+        axes[0, 0].set_ylim(-0.25, 0.25)
 
-        fig, axes = plt.subplots(1, 2, figsize=(20, 10))
-        axes[0].set_title('Drawing steps')
-        axes[0].set_xlabel('X saccade (drawing steps)')
-        axes[0].set_ylabel('Y saccade (drawing steps)')
-        axes[0].axhline(0, color='black', linestyle='--')
-        axes[0].axvline(0, color='black', linestyle='--')
-        axes[0].set_xlim(-0.25, 0.25)
-        axes[0].set_ylim(-0.25, 0.25)
+        axes[0, 1].set_title('Drawing steps (Supervised)')
+        axes[0, 1].set_xlabel('X saccade (drawing steps)')
+        axes[0, 1].set_ylabel('Y saccade (drawing steps)')
+        axes[0, 1].axhline(0, color='black', linestyle='--')
+        axes[0, 1].axvline(0, color='black', linestyle='--')
+        axes[0, 1].set_xlim(-0.25, 0.25)
+        axes[0, 1].set_ylim(-0.25, 0.25)
 
-        axes[1].set_title('Movement steps')
-        axes[1].set_xlabel('X saccade (movement steps, centered on next line)')
-        axes[1].set_ylabel('Y saccade (movement steps, centered on next line)')
-        axes[1].axhline(0, color='black', linestyle='--')
-        axes[1].axvline(0, color='black', linestyle='--')
-        axes[1].set_xlim(-0.35, 0.35)
-        axes[1].set_ylim(-0.35, 0.35)
-        for model_idx, model_name, cname in zip(range(2), ['candidate', 'supervised'], ['green', 'orange']):
-            # Split between movements where the agent draws, and ones where it does not
-            actions = loading_dict[model_name]['actions']
-            is_drawing = (actions[:, 2] >= 0) & (np.random.rand(len(actions)) < .05)
-            is_not_drawing = (actions[:, 2] < 0) & (np.random.rand(len(actions)) < .05)
+        axes[1, 0].set_title('Movement steps (Candidate)')
+        axes[1, 0].set_xlabel('X saccade (movement steps, centered on next line)')
+        axes[1, 0].set_ylabel('Y saccade (movement steps, centered on next line)')
+        axes[1, 0].axhline(0, color='black', linestyle='--')
+        axes[1, 0].axvline(0, color='black', linestyle='--')
+        axes[1, 0].set_xlim(-0.35, 0.35)
+        axes[1, 0].set_ylim(-0.35, 0.35)
 
-            data = loading_dict[model_name]['saccades'][is_drawing, :2]  # Saccades in a frame centered around the end of the line (up to some noise)
-            sns.kdeplot(x=data[:, 0], y=data[:, 1], ax=axes[0], color=cdict[cname], fill=True)
-            data = loading_dict[model_name]['saccades'][is_not_drawing, :2] - loading_dict[model_name]['oracle_saccades'][is_not_drawing, :2] # Saccades in a frame centered around the end of the line (up to some noise)
-            sns.kdeplot(x=data[:, 0], y=data[:, 1], ax=axes[1], color=cdict[cname], fill=True)
+        axes[1, 1].set_title('Movement steps (Supervised)')
+        axes[1, 1].set_xlabel('X saccade (movement steps, centered on next line)')
+        axes[1, 1].set_ylabel('Y saccade (movement steps, centered on next line)')
+        axes[1, 1].axhline(0, color='black', linestyle='--')
+        axes[1, 1].axvline(0, color='black', linestyle='--')
+        axes[1, 1].set_xlim(-0.35, 0.35)
+        axes[1, 1].set_ylim(-0.35, 0.35)
 
-        axes[0].legend(handles=[plt.Line2D([0], [0], color=cdict[cname], lw=4, label=model_name.title()) for cname, model_name in zip(['green', 'orange'], ['Candidate', 'Supervised'])], loc='upper left')
-        axes[1].legend(handles=[plt.Line2D([0], [0], color=cdict[cname], lw=4, label=model_name.title()) for cname, model_name in zip(['green', 'orange'], ['Candidate', 'Supervised'])], loc='upper left')      
+        # green_variations = sns.color_palette('crest', n_colors=n_seeds)
+        # red_variations = sns.color_palette('flare', n_colors=n_seeds)
+
+        green_variations = sns.color_palette(n_colors=n_seeds)
+        red_variations = green_variations
+
+        for model_idx, model_name, seed_colors in zip(range(2), ['candidate', 'supervised'], [green_variations, red_variations]):
+            for seed in range(n_seeds):
+                print(seed)
+                # Split between movements where the agent draws, and ones where it does not
+                actions = loading_dict[model_name]['actions']
+                saccades = loading_dict[model_name]['saccades']
+                oracle_saccades = loading_dict[model_name]['oracle_saccades']
+                # For this plot, all seeds at once so no care
+                actions = actions[seed]
+                saccades = saccades[seed]
+                oracle_saccades = oracle_saccades[seed]
+
+                is_drawing = (actions[:, 2] >= 0) & (np.random.rand(len(actions)) < .05)
+                is_not_drawing = (actions[:, 2] < 0) & (np.random.rand(len(actions)) < .05)
+
+                data = saccades[is_drawing, :2]  # Saccades in a frame centered around the end of the line (up to some noise)
+                sns.kdeplot(x=data[:, 0], y=data[:, 1], ax=axes[0, model_idx], color=seed_colors[seed], fill=True, levels=5, alpha=0.5)
+
+                data = saccades[is_not_drawing, :2] - oracle_saccades[is_not_drawing, :2] # Saccades in a frame centered around the end of the line (up to some noise)
+                sns.kdeplot(x=data[:, 0], y=data[:, 1], ax=axes[1, model_idx], color=seed_colors[seed], fill=True, levels=5, alpha=0.5)
+
+            axes[0, model_idx].legend(handles=[plt.Line2D([0], [0], color=seed_colors[seed], lw=4, label=f"Seed {seed}") for seed in range(n_seeds)], loc='upper left')
+            axes[1, model_idx].legend(handles=[plt.Line2D([0], [0], color=seed_colors[seed], lw=4, label=f"Seed {seed}") for seed in range(n_seeds)], loc='upper left')      
 
         fig.tight_layout()
         fig.savefig(OUT_DIR + 'results/saccades_comparison_between_seeds.pdf')
