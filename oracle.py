@@ -35,8 +35,8 @@ class RuleOracle:
             else:
                 # This returns the first index that has "done = 0" (done is 0 or 1, so min is 0 = not done) 
 
-                # TODO: Separate closest into closest_barycenter and closest_endpoint? 
-                if envs.rules[env_idx] != 'closest':
+
+                if envs.rules[env_idx] in ['rightward', 'leftward', 'upward', 'downward', 'leftward_with_another_color']:
                     next_symbol_idx = np.argmin(envs.symbols_done[env_idx])
                     # Careful, need to convert to [-1, 1] range
                     barycenter = envs.barycenters[env_idx, next_symbol_idx]
@@ -60,6 +60,7 @@ class RuleOracle:
                     else:
                         # Otherwise, we move to the start point
                         actions[env_idx] = [moves_to_start[env_idx, 0], moves_to_start[env_idx, 1], -.2]
+
                 elif envs.rules[env_idx] == 'closest':
                     # print('In closest branch')
                     min_dist = np.inf
@@ -78,11 +79,10 @@ class RuleOracle:
                             start_point, end_point = envs.target_endpoints[env_idx, symbol_idx, :2] , envs.target_endpoints[env_idx, symbol_idx, 2:]
                             start_move = start_point - positions[env_idx]
                             end_move = end_point - positions[env_idx]
-                            # print('start_move', start_move, 'end_move', end_move)
-                            # print('start_move norm', np.linalg.norm(start_move), 'end_move norm', np.linalg.norm(end_move))
+
 
                             if np.linalg.norm(start_move) < min_dist:
-                                # print('new best candidate')
+
                                 min_dist = np.linalg.norm(start_move)
                                 saccade = barycenter - positions[env_idx] 
                                 move = deepcopy(start_move)
@@ -90,14 +90,13 @@ class RuleOracle:
                                 start_from = 'start'
 
                             if np.linalg.norm(end_move) < min_dist:
-                                # print('new best candidate')
+
                                 min_dist = np.linalg.norm(end_move)
                                 saccade = barycenter - positions[env_idx] 
                                 move = deepcopy(end_move)
                                 next_symbol_idx = symbol_idx
                                 start_from = 'end'
                             
-                            # print('min_dist', min_dist, 'next_symbol_idx', next_symbol_idx, 'start_from', start_from)
                     # Then, see if it is closer than sensitivity, in which case need to change the move
                     if next_symbol_idx >= 0:
                         # Ensures we found a line to draw 
@@ -116,10 +115,64 @@ class RuleOracle:
                     move = move + self.sample_noise()
                     actions[env_idx] = [move[0], move[1], .2*(2.*float(draw)-1)]
                     saccades[env_idx] = saccade + self.sample_noise()
-                        
-                else:
-                    raise ValueError('Unknown rule: {}'.format(envs.rules[env_idx]))
 
+                elif envs.rules[env_idx] == 'closest_from_left':
+                    # Do symbols by proximity, but always left to right within the symbol
+                    min_dist = np.inf
+                    next_symbol_idx = -1
+
+                    for symbol_idx in range(envs.n_symbols[env_idx]):
+                        # First, determine what would be the closest BARYCENTET to move to
+                        if envs.symbols_done[env_idx, symbol_idx] == 0:
+                            barycenter = envs.barycenters[env_idx, symbol_idx]
+                            dist = np.linalg.norm(barycenter-positions[env_idx])
+                            if dist < min_dist:
+                                min_dist = dist
+                                next_symbol_idx = symbol_idx 
+
+                    saccade = envs.barycenters[env_idx, next_symbol_idx] - positions[env_idx]
+                    start_point, end_point = envs.target_endpoints[env_idx, next_symbol_idx, :2] , envs.target_endpoints[env_idx, next_symbol_idx, 2:]
+                    start_move = start_point - positions[env_idx]
+                    end_move = end_point - positions[env_idx]
+
+                    if np.linalg.norm(start_move) < self.sensitivity:
+                        actions[env_idx] = [end_move[0], end_move[1], .2]
+                    else:
+                        actions[env_idx] = [start_move[0], start_move[1], -.2]
+
+                    actions[env_idx, :2] = actions[env_idx, :2] + self.sample_noise()
+                    saccades[env_idx] = saccade + self.sample_noise()
+
+                elif envs.rules[env_idx] == 'leftward_closest_endpoints':
+                    next_symbol_idx = np.argmin(envs.symbols_done[env_idx])
+                    # Careful, need to convert to [-1, 1] range
+                    barycenter = envs.barycenters[env_idx, next_symbol_idx]
+
+                    # Eye movement to center of next symbol (idea: comes from "peripheral vision" / the whole screen)
+                    saccades[env_idx] = barycenter - positions[env_idx] + self.sample_noise()
+
+                    # Eye movement directly to next line endpoints 
+                    start_point, end_point = envs.target_endpoints[env_idx, next_symbol_idx, :2] , envs.target_endpoints[env_idx, next_symbol_idx, 2:]
+                    moves_to_start[env_idx] = start_point - positions[env_idx] + self.sample_noise()
+                    moves_to_end[env_idx] = end_point - positions[env_idx] + self.sample_noise()
+
+                    # Homing movement (after saccade, that's how you get to the endpoint)
+                    homes_to_start[env_idx] = moves_to_start[env_idx] - saccades[env_idx] 
+                    homes_to_end[env_idx] = moves_to_end[env_idx] - saccades[env_idx] 
+
+                    closest_move = moves_to_start[env_idx] if np.linalg.norm(moves_to_start[env_idx]) < np.linalg.norm(moves_to_end[env_idx]) else moves_to_end[env_idx]
+                    furthest_move = moves_to_start[env_idx] if np.linalg.norm(moves_to_start[env_idx]) > np.linalg.norm(moves_to_end[env_idx]) else moves_to_end[env_idx]
+                    
+                    if np.linalg.norm(closest_move) < self.sensitivity:
+                        # If move to start is smaller than sensitivity, we can directly move to the end point
+                        actions[env_idx] = [furthest_move[0], furthest_move[1], .2]
+                    else:
+                        # Otherwise, we move to the start point
+                        actions[env_idx] = [closest_move[0], closest_move[1], -.2]
+
+
+                else:
+                    raise ValueError('Unknown rule: {}'.format(envs.rules[env_idx]))       
                 
         submoves = {
             'saccades': saccades,
@@ -175,7 +228,8 @@ if __name__ == '__main__':
         'all_envs_start_identical': False,
         'allowed_symbols': ['line_0', 'line_1', 'line_2', 'line_3'],
         # 'allowed_rules': ['rightward', 'leftward', 'upward', 'downward'],
-        'allowed_rules': ['closest'],
+        # 'allowed_rules': ['closest'],
+        'allowed_rules': ['leftward_with_another_color', 'leftward_closest_endpoints', 'closest_from_left'],
         'timeout': None,
         'mirror': False,
     }

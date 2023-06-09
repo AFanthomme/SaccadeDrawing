@@ -128,28 +128,39 @@ class RuleBoards:
 
         # Defines the rules 
 
-        self.rules_names = ['closest', 'rightward', 'leftward', 'upward', 'downward']
+        self.rules_names = ['closest', 'rightward', 'leftward', 'upward', 'downward', 'leftward_with_another_color', 'leftward_closest_endpoints', 'closest_from_left']
 
         self.rule_border_colors = {
             'closest': np.array([0, 0, 0]),
+            # These get the four sides
             'leftward': np.array([.5, .5, 0]),
             'rightward': np.array([0.5, 0.5, 0.5]),
             'upward': np.array([0, .5, .5]),
             'downward': np.array([.5, 0, .5]),
+
+            # For these, only two sides
+            'leftward_with_another_color': np.array([.75, .75, .75]),
+            'leftward_closest_endpoints': np.array([.25, .75, .5]),
+            'closest_from_left': np.array([.5, .25, .75]),
         }
 
         self.backgrounds = {}
 
-        for k,v in self.rule_border_colors.items():
+        # for k,v in self.rule_border_colors.items():
+        for rule in self.rules_names:
             bkg = np.zeros((128, 128, 3), dtype=np.float32)
-            bkg[0, 0] = 1
+            v = self.rule_border_colors[rule]
+            
             tmp = np.tile(v, (128, 4, 1))
             bkg[:, :4, :] = tmp.copy()
             bkg[:, -4:, :] = tmp.copy()
-            tmp = np.tile(v, (4, 128, 1))
-            bkg[:4, :, :] = tmp.copy()
-            bkg[-4:, :, :] = tmp.copy()
-            self.backgrounds[k] = bkg.copy()
+
+            if rule in ['closest', 'rightward', 'leftward', 'upward', 'downward']:
+                tmp = np.tile(v, (4, 128, 1))
+                bkg[:4, :, :] = tmp.copy()
+                bkg[-4:, :, :] = tmp.copy()
+
+            self.backgrounds[rule] = bkg.copy()
 
         self.default_pos_patch = np.zeros((128, 128, 3), dtype=np.uint8)
         self.default_pos_patch = cv2.circle(self.default_pos_patch, (64,64), 2, (1,0,0), -1)
@@ -163,15 +174,15 @@ class RuleBoards:
 
     @staticmethod
     def rule_defined_ordering(rule, b1, b2):
-        # NOTE: 'closest' does not really use this ordering so use leftmost just for the sake of it
-        # NOTE: tie-brezkers should never trigger with new unambiguous resets 
-        if rule == 'rightward' or rule == 'closest':
+        # NOTE: 'closest' does not really use this ordering so use leftmost 
+        # NOTE: the last two rules will need custom orcle logic, but rely on leftmost ordering 
+        if rule in ['rightward', 'closest', 'leftward_closest_endpoints', 'closest_from_left']:
             if b1[0] != b2[0]:
                 return b1[0]-b2[0]
             else:
                 # Tie-breaker
                 return b1[1]-b2[1] 
-        elif rule == 'leftward':
+        elif rule == 'leftward' or rule == 'leftward_with_another_color':
             if b1[0] != b2[0]:
                 return b2[0]-b1[0]
             else:
@@ -372,11 +383,12 @@ class RuleBoards:
         return new_draws.copy()
 
     def _compute_reward(self, new_draws):
+        # NOTE: reward does not take into account the drawing direction within one symbol, only between symbols.
         rewards = np.zeros(self.n_envs)
         added_pixels = np.any(new_draws[:,:,:,2], axis=(1,2))
 
         for board_id in range(self.n_envs):
-            if self.rules[board_id] == 'closest':
+            if self.rules[board_id] in ['closest', 'closest_from_left']:
                 # 'closest' does not care about position, always gives rewards if drawing correctly
                     if not np.all(self.symbols_done[board_id]):
                         if added_pixels[board_id]:
@@ -398,7 +410,7 @@ class RuleBoards:
                                         rewards[board_id] += 1 
 
 
-            elif self.rules[board_id] in ['rightward', 'leftward', 'upward', 'downward']:
+            elif self.rules[board_id] in ['rightward', 'leftward', 'upward', 'downward', 'leftward_with_another_color', 'leftward_closest_endpoints']:
                 if added_pixels[board_id]:
                     # This is to take care of the case where we draw two lines in a single move, not super frequent but still
                     repeat = True
@@ -501,7 +513,10 @@ if __name__ == '__main__':
         'reward_params':  {'overlap_criterion': .4},
         'all_envs_start_identical': False,
         'allowed_symbols': ['line_0', 'line_1', 'line_2', 'line_3'],
-        'allowed_rules': ['rightward', 'leftward', 'upward', 'downward'],
+
+        # 'allowed_rules': ['rightward', 'leftward', 'upward', 'downward'],
+        'allowed_rules': ['closest', 'rightward', 'leftward', 'upward', 'downward', 'leftward_with_another_color', 'leftward_closest_endpoints', 'closest_from_left'],
+
         'timeout': None,
         'mirror': False,
     }
